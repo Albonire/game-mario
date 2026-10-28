@@ -1,5 +1,5 @@
 import { mulberry } from '../../utils/rng';
-import { MAP_SIZE, WORLD } from '../track';
+import { MAP_SIZE, WORLD, angleDelta, localRadii } from '../track';
 import type { SceneryRule, TrackDef } from '../tracks/types';
 import type { Decoration, TrackData } from '../types';
 import type { MarginField, RoadField } from './fields';
@@ -75,6 +75,8 @@ export function placeScenery(ctx: PlaceContext): Decoration[] {
     return marginAt(margin, x, y) >= (rule.minMargin ?? 20);
   };
 
+  const radii = def.scenery.some((r) => r.corners) ? localRadii(track.points) : null;
+  const total = track.points.length;
   for (const rule of def.scenery) {
     const stride = Math.max(2, Math.round(rule.every / track.step));
     const n = track.points.length;
@@ -85,7 +87,14 @@ export function placeScenery(ctx: PlaceContext): Decoration[] {
       if (rand() > rule.chance) continue;
       const p = track.points[i];
       const alternate = slot % 2 === 0 ? 1 : -1;
-      for (const side of [alternate, -alternate]) {
+      let sides = [alternate, -alternate];
+      if (rule.corners && radii) {
+        if (radii[i] > rule.corners.maxRadius) continue;
+        // Lado exterior: si el trazado gira a la derecha (ángulo creciente), el exterior es la izquierda.
+        const turn = angleDelta(track.points[(i - 8 + total) % total].angle, track.points[(i + 8) % total].angle);
+        sides = [turn > 0 ? -1 : 1];
+      }
+      for (const side of sides) {
         const offset = rule.offsetMin + rand() * (rule.offsetMax - rule.offsetMin);
         const x = p.x + p.nx * side * offset;
         const y = p.y + p.ny * side * offset;
@@ -114,7 +123,13 @@ export function placeScenery(ctx: PlaceContext): Decoration[] {
   }
 
   // Arco de salida y elementos fijos de la pista.
-  out.push({ x: track.start.x, y: track.start.y, type: 'arch', side: 0, scale: 1 });
+  out.push({ x: track.start.x, y: track.start.y, type: def.theme.startArch, side: 0, scale: 1 });
   for (const lm of def.landmarks) out.push({ x: lm.x, y: lm.y, type: lm.type, side: 0, scale: lm.scale ?? 1 });
+  const s = track.start;
+  for (const it of def.startside ?? []) {
+    const x = s.x + Math.sin(s.angle) * it.along + Math.cos(s.angle) * it.lateral;
+    const y = s.y - Math.cos(s.angle) * it.along + Math.sin(s.angle) * it.lateral;
+    out.push({ x, y, type: it.type, side: Math.sign(it.lateral), scale: it.scale ?? 1 });
+  }
   return out;
 }

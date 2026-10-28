@@ -1,4 +1,4 @@
-import { PROP_SHADOW } from '../config';
+import { LIGHT_POOLS, PROP_SHADOW } from '../config';
 import { MAP_SIZE, WORLD } from '../track';
 import type { ThemeDef } from '../themes';
 import type { Decoration, TrackData } from '../types';
@@ -253,6 +253,29 @@ export async function paintBase(input: PaintInput): Promise<Uint8ClampedArray<Ar
           r = palA[ia] + (palB[ia] - palA[ia]) * t;
           g = palA[ia + 1] + (palB[ia + 1] - palA[ia + 1]) * t;
           b = palA[ia + 2] + (palB[ia + 2] - palA[ia + 2]) * t;
+          if (dist <= CURB) {
+            // Placa sobre la calzada: hielo negro, con el asfalto y sus líneas asomando debajo.
+            const ai = Mat.ASPHALT * 3;
+            const cover = 0.42 + 0.4 * lo;
+            r = palA[ai] + (r - palA[ai]) * cover;
+            g = palA[ai + 1] + (g - palA[ai + 1]) * cover;
+            b = palA[ai + 2] + (b - palA[ai + 2]) * cover;
+            const al = Math.abs(lat);
+            const marked = (al > ROAD - 3.8 && al < ROAD - 2.0) || (al < 0.9 && ((s / 9) | 0) % 2 === 0);
+            if (marked) {
+              r += (line[0] - r) * 0.4;
+              g += (line[1] - g) * 0.4;
+              b += (line[2] - b) * 0.4;
+            }
+            const scratch = Math.abs(n2(wx * 0.07 + wy * 0.03, wy * 0.22) - 0.5);
+            if (scratch < 0.013) {
+              r += (255 - r) * 0.6;
+              g += (255 - g) * 0.6;
+              b += (255 - b) * 0.6;
+            }
+            bright *= 1 + 0.12 * (lo - 0.5);
+            break;
+          }
           const vein = 1 - Math.abs(2 * n2(wx * 0.04 + 5, wy * 0.014) - 1);
           if (vein > 0.97) {
             r += (255 - r) * 0.7;
@@ -325,6 +348,24 @@ function drawShadows(ctx: CanvasRenderingContext2D, theme: ThemeDef, decorations
   ctx.restore();
 }
 
+/** Charcos de luz de farolas y rótulos, sumados al suelo para que brillen de noche. */
+function drawLightPools(ctx: CanvasRenderingContext2D, decorations: Decoration[]) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const d of decorations) {
+    const pool = LIGHT_POOLS[d.type];
+    if (!pool) continue;
+    const r = pool.r * d.scale;
+    const grad = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, r);
+    grad.addColorStop(0, `rgba(${pool.rgb}, ${pool.alpha})`);
+    grad.addColorStop(0.55, `rgba(${pool.rgb}, ${pool.alpha * 0.32})`);
+    grad.addColorStop(1, `rgba(${pool.rgb}, 0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(d.x - r, d.y - r, r * 2, r * 2);
+  }
+  ctx.restore();
+}
+
 function drawStartLine(ctx: CanvasRenderingContext2D, track: TrackData) {
   const s = track.start;
   ctx.save();
@@ -382,6 +423,7 @@ export async function paintDecals(base: Uint8ClampedArray<ArrayBuffer>, input: P
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   ctx.putImageData(new ImageData(base, MAP_SIZE, MAP_SIZE), 0, 0);
   drawShadows(ctx, input.theme, input.decorations);
+  drawLightPools(ctx, input.decorations);
   drawStartLine(ctx, input.track);
   for (const pad of input.track.boostPads) drawBoostPad(ctx, pad.x, pad.y, pad.angle);
   await input.tick(0.9);

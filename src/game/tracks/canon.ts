@@ -1,0 +1,96 @@
+import { CANON_THEME } from '../themes';
+import { Mat } from '../terrain/materials';
+import type { TrackDef } from './types';
+
+/** Cañón del Sol: un anillo de asfalto entre mesas rojas, con el abismo del cañón a ambos lados. */
+export const CANON: TrackDef = {
+  id: 'canon',
+  name: 'Cañón del Sol',
+  tagline: 'Rectas largas de desierto y curvas anchas sobre tierra roja.',
+  laps: 3,
+  layout: {
+    kind: 'spline',
+    points: [
+      { x: 270, y: 1700 },
+      { x: 740, y: 1745 },
+      { x: 1190, y: 1725 },
+      { x: 1540, y: 1650 },
+      { x: 1770, y: 1480 },
+      { x: 1820, y: 1230 },
+      { x: 1720, y: 1000 },
+      { x: 1540, y: 820 },
+      { x: 1320, y: 760 },
+      { x: 1170, y: 860 },
+      { x: 1040, y: 1000 },
+      { x: 890, y: 950 },
+      { x: 780, y: 780 },
+      { x: 600, y: 640 },
+      { x: 380, y: 620 },
+      { x: 260, y: 800 },
+      { x: 230, y: 1050 },
+      { x: 230, y: 1300 },
+      { x: 240, y: 1520 },
+    ],
+  },
+  startAt: 'auto',
+  terrain: { kind: 'ribbon', radius: 230, wobble: 0.25, seed: 3 },
+  patches: [],
+  blobs: [
+    { x: 980, y: 1420, r: 140, mat: Mat.SAND, seed: 2 },
+    { x: 1500, y: 1180, r: 110, mat: Mat.SAND, seed: 5 },
+    { x: 500, y: 1000, r: 90, mat: Mat.SAND, seed: 7 },
+    { x: 990, y: 1290, r: 96, mat: Mat.ROCK, seed: 9 },
+  ],
+  boostPads: [0.3, 0.75, 0.94],
+  scenery: [
+    {
+      types: [['tires', 1]],
+      every: 14,
+      offsetMin: 44,
+      offsetMax: 50,
+      chance: 0.92,
+      minMargin: 8,
+      scale: [1, 1],
+      corners: { maxRadius: 230 },
+    },
+    {
+      types: [
+        ['cactus', 4],
+        ['cactus_barrel', 3],
+        ['rock_red', 3],
+        ['dead_tree', 1],
+        ['sign_skull', 1],
+      ],
+      every: 50,
+      offsetMin: 56,
+      offsetMax: 128,
+      chance: 1,
+      minMargin: 26,
+      scale: [0.85, 1.25],
+      cluster: { chance: 0.5, count: [1, 2], spread: 34, types: ['cactus_barrel', 'rock_red', 'cactus'], scale: [0.6, 1] },
+    },
+    {
+      types: [
+        ['mesa_s', 3],
+        ['mesa_m', 2],
+        ['mesa_l', 1],
+      ],
+      every: 190,
+      offsetMin: 150,
+      offsetMax: 250,
+      chance: 0.85,
+      minMargin: 50,
+      scale: [0.85, 1.25],
+    },
+  ],
+  startside: [
+    { type: 'grandstand', along: 120, lateral: 58, scale: 0.9 },
+    { type: 'grandstand', along: 120, lateral: -58, scale: 0.9 },
+  ],
+  landmarks: [
+    { type: 'mesa_l', x: 990, y: 1290, scale: 1.4 },
+    { type: 'windmill', x: 580, y: 1430, scale: 1 },
+    { type: 'rock_arch', x: 1420, y: 1100, scale: 1.1 },
+  ],
+  theme: CANON_THEME,
+};

@@ -54,6 +54,16 @@ export const FARO: TrackDef = {
   boostPads: [0.21, 0.69],
   scenery: [
     {
+      types: [['tires', 1]],
+      every: 14,
+      offsetMin: 44,
+      offsetMax: 50,
+      chance: 0.92,
+      minMargin: 8,
+      scale: [1, 1],
+      corners: { maxRadius: 230 },
+    },
+    {
       types: [
         ['palm', 4],
         ['rock', 2],
@@ -69,6 +79,10 @@ export const FARO: TrackDef = {
       cluster: { chance: 0.55, count: [1, 1], spread: 34, types: ['rock', 'bush', 'palm'], scale: [0.6, 1] },
     },
   ],
+  startside: [
+    { type: 'grandstand', along: 120, lateral: 58, scale: 0.9 },
+    { type: 'grandstand', along: 120, lateral: -58, scale: 0.9 },
+  ],
   landmarks: [
     { type: 'lighthouse', x: 1802, y: 1310, scale: 1.15 },
     { type: 'rock', x: 1760, y: 1360, scale: 1.35 },
@@ -77,6 +91,13 @@ export const FARO: TrackDef = {
     { type: 'bouy', x: 1960, y: 1720 },
     { type: 'bouy', x: 300, y: 1530 },
     { type: 'bouy', x: 560, y: 260 },
+    { type: 'sailboat', x: 1240, y: 1950, scale: 1.1 },
+    { type: 'sailboat', x: 820, y: 1990, scale: 0.9 },
+    { type: 'sailboat', x: 1560, y: 1930, scale: 1 },
+    { type: 'umbrella', x: 1080, y: 1782 },
+    { type: 'umbrella', x: 1150, y: 1796 },
+    { type: 'umbrella', x: 990, y: 1776 },
+    { type: 'umbrella', x: 1330, y: 1815 },
   ],
   theme: FARO_THEME,
 };

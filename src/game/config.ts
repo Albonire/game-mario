@@ -29,17 +29,6 @@ export const PICKUP = {
   BOOST_PAD: 22,
 } as const;
 
-/** Ancho en unidades de cada tipo de prop (el alto sale del aspecto del sprite). */
-export const PROP_WIDTH: Record<string, number> = {
-  palm: 28,
-  rock: 14,
-  bush: 12,
-  sign: 8,
-  arch: 76,
-  lighthouse: 58,
-  bouy: 6,
-};
-
 export const PICKUP_WIDTH = {
   box: 7,
   can: 3.6,
@@ -68,4 +57,37 @@ export const PROP_SHADOW: Record<string, { rx: number; ry: number; reach: number
   bush: { rx: 5, ry: 3.5, reach: 3 },
   sign: { rx: 2, ry: 1.5, reach: 4 },
   lighthouse: { rx: 12, ry: 9, reach: 70 },
+  cactus: { rx: 4, ry: 3, reach: 14 },
+  cactus_barrel: { rx: 4, ry: 3, reach: 4 },
+  rock_red: { rx: 7, ry: 5, reach: 5 },
+  dead_tree: { rx: 6, ry: 4, reach: 14 },
+  sign_skull: { rx: 2.4, ry: 1.6, reach: 5 },
+  mesa_s: { rx: 44, ry: 24, reach: 70 },
+  mesa_m: { rx: 66, ry: 34, reach: 100 },
+  mesa_l: { rx: 92, ry: 46, reach: 140 },
+  windmill: { rx: 12, ry: 9, reach: 36 },
+  rock_arch: { rx: 44, ry: 14, reach: 56 },
+  pine: { rx: 9, ry: 7, reach: 22 },
+  pine_bare: { rx: 5, ry: 4, reach: 12 },
+  snowman: { rx: 3, ry: 2.4, reach: 4 },
+  mound: { rx: 11, ry: 7, reach: 3 },
+  ice_crystal: { rx: 5, ry: 3.4, reach: 8 },
+  pylon: { rx: 3, ry: 2, reach: 26 },
+  cabin: { rx: 28, ry: 18, reach: 26 },
+  tower_a: { rx: 46, ry: 28, reach: 40 },
+  tower_b: { rx: 30, ry: 26, reach: 40 },
+  tower_c: { rx: 60, ry: 38, reach: 60 },
+  container: { rx: 30, ry: 12, reach: 6 },
+  umbrella: { rx: 6, ry: 4, reach: 8 },
+  tires: { rx: 8, ry: 5, reach: 5 },
+  grandstand: { rx: 28, ry: 12, reach: 20 },
+};
+
+/**
+ * Charcos de luz que las fuentes de luz proyectan en el suelo (se suman al color del mapa).
+ * `r` es el radio en unidades del mundo para escala 1.
+ */
+export const LIGHT_POOLS: Record<string, { r: number; rgb: string; alpha: number }> = {
+  lamp: { r: 46, rgb: '255, 206, 130', alpha: 0.55 },
+  neon_sign: { r: 34, rgb: '255, 110, 210', alpha: 0.4 },
 };

@@ -1,14 +1,17 @@
-import { getSprite, propSprite } from './art';
-import { KART, PICKUP, PICKUP_WIDTH, PROP_WIDTH, SECTORS } from './config';
+import { propSprite } from './art';
+import { KART, PICKUP, PICKUP_WIDTH, SECTORS } from './config';
 import { BOX_WEIGHTS, DIFFICULTY_BY_ID, PILOTS, PILOT_BY_ID } from './data';
 import { GameAudio } from './audio';
+import { Weather } from './weather';
 import { Mode7Renderer, drawWorldSprite, project } from './render';
 import { KartSprites, lodIndexFor, pitchIndexFor, poseKeyFor } from './sprites/atlas';
+import { PropSprites, glowCanvas } from './sprites/propAtlas';
+import { PROPS } from './sprites/props';
 import { SURFACE_FOLLOW, SURFACE_GRIP, isVoid } from './terrain/materials';
 import { loadWorld, matAt, surfaceAt, type BuildProgress, type WorldData } from './terrain/world';
 import { WORLD, angleDelta, clamp, formatTime, nearestPoint, worldToMinimap } from './track';
 import type { TrackDef } from './tracks/types';
-import type { TrackData, TrackId } from './types';
+import type { Decoration, TrackData, TrackId } from './types';
 import { VIEW, defaultTier, lowerTier, setTier, type QualityChoice, type QualityTier } from './view';
 import type {
   Difficulty,
@@ -147,6 +150,15 @@ const TOUCH_KEYS: TouchControl[] = ['left', 'right', 'brake', 'drift', 'nitro', 
 
 /** Superficies donde el motor suena más forzado y el derrape levanta polvo o nieve. */
 const OFFROAD = new Set<Surface>(['grass', 'sand', 'dirt', 'snow', 'deepsnow']);
+/** Lo que levantan las ruedas al pasar sobre cada superficie suelta o mojada. */
+const SPRAY: Partial<Record<Surface, string[]>> = {
+  sand: ['#ecdcb0', '#d8c28a'],
+  dirt: ['#c98a5e', '#a96c46'],
+  snow: ['#f4f9ff', '#dbe9f8'],
+  deepsnow: ['#f4f9ff', '#dbe9f8'],
+  wet: ['#bfe8ff', '#7fb8e8'],
+  grass: ['#8fbf6a'],
+};
 
 function audioSurface(s: Surface): 'asphalt' | 'curb' | 'grass' | 'sand' {
   switch (s) {
@@ -173,6 +185,7 @@ export class RaceEngine {
   private def!: TrackDef;
   private renderer!: Mode7Renderer;
   private sprites!: KartSprites;
+  private props!: PropSprites;
   private overlay!: HTMLCanvasElement;
   private tier: QualityTier = 'alta';
   private autoQuality = true;
@@ -222,6 +235,8 @@ export class RaceEngine {
   private raf = 0;
   private destroyed = false;
   private finishSent = false;
+  private weather = new Weather('none');
+  private sprayClock = 0;
   private driftEmitClock = 0;
   private boostEmitClock = 0;
 
@@ -250,7 +265,9 @@ export class RaceEngine {
     this.createWorld();
     this.createKarts();
     this.warmUpSprites();
+    this.weather = new Weather(this.def.theme.weather);
     this.audio.startEngine();
+    this.audio.startAmbient(this.def.theme.soundscape);
     this.attachEvents();
     if (this.opts.debug) (window as unknown as { __tux?: unknown }).__tux = {
         state: () => this.debugState(),
@@ -293,6 +310,14 @@ export class RaceEngine {
    */
   private warmUpSprites() {
     this.sprites = new KartSprites();
+    this.props = new PropSprites(this.world.def.theme);
+    // Props: todos los tipos y variantes que aparecen en esta pista, en detalle medio, ya para el primer fotograma.
+    for (const d of this.world.decorations) {
+      const def = PROPS[d.type];
+      if (!def) continue;
+      this.props.request(d.type, PropSprites.pick(def, d.x, d.y).variant, 1, true);
+    }
+    this.props.flush();
     const nearLod = lodIndexFor(VIEW.FOCAL / WORLD.CAM_DIST);
     const farLod = lodIndexFor(VIEW.FOCAL / 90);
     this.sprites.request(this.player.pilot, 'N', 0, nearLod, true);
@@ -416,6 +441,7 @@ export class RaceEngine {
   private resumeAudio = () => {
     this.audio.init();
     this.audio.startEngine();
+    if (this.def) this.audio.startAmbient(this.def.theme.soundscape);
   };
 
   private onPadConnected = () => {
@@ -527,6 +553,7 @@ export class RaceEngine {
     const dt = clamp(raw, 0.001, 0.05);
     const t0 = performance.now();
     this.sprites.pump(this.phase === 'racing' ? 2.5 : 6);
+    this.props.pump(this.phase === 'racing' ? 2 : 5);
     if (!this.paused) {
       this.fps = this.fps * 0.93 + (1 / Math.max(0.001, raw)) * 0.07;
       const steps = this.opts.timeScale && this.opts.timeScale > 1 ? Math.round(this.opts.timeScale) : 1;
@@ -665,6 +692,16 @@ export class RaceEngine {
           this.shake = Math.max(this.shake, 3);
           this.spawnBoost(k);
         }
+      }
+    }
+
+    // Polvo, nieve o agua que levantan las ruedas fuera del asfalto.
+    const spray = SPRAY[surface];
+    if (spray && k.speed > 45 && (k.isPlayer || Math.random() < 0.35) && this.particles.length < 200) {
+      this.sprayClock += dt * (k.speed / 150);
+      if (!k.isPlayer || this.sprayClock > 0.035) {
+        if (k.isPlayer) this.sprayClock = 0;
+        this.spawnSpray(k, spray[Math.floor(Math.random() * spray.length)], surface);
       }
     }
 
@@ -1187,6 +1224,24 @@ export class RaceEngine {
     });
   }
 
+  private spawnSpray(k: Kart, color: string, surface: Surface) {
+    const side = Math.random() > 0.5 ? 1 : -1;
+    const soft = surface === 'sand' || surface === 'dirt' || surface === 'snow' || surface === 'deepsnow';
+    this.particles.push({
+      x: k.x - Math.sin(k.angle) * 6 + Math.cos(k.angle) * 4 * side,
+      y: k.y + Math.cos(k.angle) * 6 + Math.sin(k.angle) * 4 * side,
+      z: 1,
+      vx: (Math.random() - 0.5) * 20 - Math.sin(k.moveAngle) * k.speed * 0.12,
+      vy: (Math.random() - 0.5) * 20 + Math.cos(k.moveAngle) * k.speed * 0.12,
+      vz: 8 + Math.random() * 16,
+      life: soft ? 0.55 : 0.4,
+      maxLife: soft ? 0.55 : 0.4,
+      size: soft ? 2.8 : 1.8,
+      color,
+      gravity: soft ? 38 : 90,
+    });
+  }
+
   private spawnBoost(k: Kart) {
     for (let i = 0; i < 2; i++) {
       const bx = k.x - Math.sin(k.angle) * (10 + i * 3);
@@ -1353,13 +1408,13 @@ export class RaceEngine {
     const depthOf = (x: number, y: number) => (x - camera.x) * sinYaw - (y - camera.y) * cosYaw;
 
     for (const d of this.world.decorations) {
-      if (dist2(d.x, d.y) > visibilityCut * visibilityCut) continue;
-      const sprite = getSprite(d.type);
+      const def = PROPS[d.type];
+      if (!def) continue;
+      const cut = def.far ?? visibilityCut;
+      if (dist2(d.x, d.y) > cut * cut) continue;
       calls.push({
         depth: depthOf(d.x, d.y),
-        draw: () => {
-          drawWorldSprite(ctx, sprite, camera, d.x, d.y, (PROP_WIDTH[d.type] ?? 12) * d.scale);
-        },
+        draw: () => this.drawProp(ctx, camera, d),
       });
     }
 
@@ -1412,6 +1467,8 @@ export class RaceEngine {
     calls.sort((a, b) => b.depth - a.depth);
     for (const call of calls) call.draw();
 
+    this.weather.update(dt, clamp(this.player.speed / WORLD.MAX_SPEED, 0, 1));
+    this.weather.draw(ctx);
     ctx.drawImage(this.overlay, 0, 0);
     if (this.player.boost > 0 || this.player.nitro > 0) {
       const intensity = this.player.boost > 0 ? 0.26 : 0.12;
@@ -1436,6 +1493,32 @@ export class RaceEngine {
     if (this.phase === 'finished') {
       ctx.fillStyle = 'rgba(8, 23, 20, .18)';
       ctx.fillRect(0, 0, VIEW.W, VIEW.H);
+    }
+  }
+
+  private drawProp(ctx: CanvasRenderingContext2D, camera: { x: number; y: number; yaw: number; shake: number }, d: Decoration) {
+    const p = project(camera, d.x, d.y);
+    if (!p.visible) return;
+    const def = PROPS[d.type];
+    const { variant, flip } = PropSprites.pick(def, d.x, d.y);
+    const unit = p.scale * d.scale;
+    const lod = PropSprites.lodFor(unit);
+    this.props.request(d.type, variant, lod);
+    const sprite = this.props.best(d.type, variant, lod);
+    const bob = def.bob ? Math.sin(performance.now() * 0.0016 + d.x * 0.05) * def.bob * unit : 0;
+    if (sprite) PropSprites.draw(ctx, sprite, p.x, p.y + bob, unit, flip);
+    const glow = def.glow;
+    if (glow) {
+      const r = glow.r * unit;
+      if (r >= 2) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = glow.alpha * Math.min(1, r / 14);
+        ctx.imageSmoothingEnabled = true;
+        const gx = p.x + (glow.x ?? 0) * unit * (flip ? -1 : 1);
+        ctx.drawImage(glowCanvas(glow.rgb), gx - r, p.y - glow.y * unit - r, r * 2, r * 2);
+        ctx.restore();
+      }
     }
   }
 
@@ -1467,14 +1550,17 @@ export class RaceEngine {
 
   private drawKart(ctx: CanvasRenderingContext2D, k: Kart, camera: { x: number; y: number; yaw: number; shake: number }) {
     const p = project(camera, k.x, k.y);
-    if (!p.visible || p.scale < 0.3) return;
+    // Un rival que pasa pegado a la cámara se desvanece en vez de taparlo todo.
+    if (!p.visible || p.scale < 0.3 || p.forward < 11) return;
+    const fade = Math.min(1, (p.forward - 11) / 11);
     const pitchIdx = pitchIndexFor(p.forward);
     const lodIdx = lodIndexFor(p.scale);
     this.sprites.request(k.pilot, 'N', pitchIdx, lodIdx);
     const atlas = this.sprites.best(k.pilot.id, 'N', pitchIdx, lodIdx);
     const rel = this.relativeAngle(k, camera);
-    this.drawShadow(ctx, p, rel, 1);
-    if (atlas) KartSprites.draw(ctx, atlas, rel, p.x, p.y, p.scale);
+    this.drawHeadlights(ctx, camera, k, fade);
+    this.drawShadow(ctx, p, rel, fade);
+    if (atlas) KartSprites.draw(ctx, atlas, rel, p.x, p.y, p.scale, fade);
   }
 
   private drawPlayer(ctx: CanvasRenderingContext2D, camera: { x: number; y: number; yaw: number; shake: number }) {
@@ -1487,6 +1573,7 @@ export class RaceEngine {
     const atlas = this.sprites.best(k.pilot.id, pose, pitchIdx, lodIdx);
     const rel = this.relativeAngle(k, camera);
     const bounce = Math.sin(this.raceTime * 21) * Math.min(0.8, k.speed / 200) * (p.scale / 8);
+    this.drawHeadlights(ctx, camera, k, 1);
     this.drawShadow(ctx, p, rel, 1.1);
 
     // Llamas por los dos escapes (salen hacia atrás, es decir, hacia la cámara).
@@ -1514,6 +1601,27 @@ export class RaceEngine {
     ctx.save();
     ctx.translate(p.x, p.y + bounce);
     KartSprites.draw(ctx, atlas, rel, 0, 0, p.scale);
+    ctx.restore();
+  }
+
+  /** De noche cada kart ilumina el asfalto por delante con un charco de luz cálida. */
+  private drawHeadlights(ctx: CanvasRenderingContext2D, camera: { x: number; y: number; yaw: number; shake: number }, k: Kart, strength: number) {
+    if (this.def.theme.celestial?.kind !== 'moon') return;
+    const reach = 34;
+    const p = project(camera, k.x + Math.sin(k.angle) * reach, k.y - Math.cos(k.angle) * reach);
+    if (!p.visible || p.forward < 6) return;
+    const squash = WORLD.CAM_H / p.forward;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.transform(p.scale, 0, 0, -p.scale * squash, p.x, p.y);
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 17);
+    grad.addColorStop(0, `rgba(255, 240, 196, ${0.34 * strength})`);
+    grad.addColorStop(0.6, `rgba(255, 226, 160, ${0.12 * strength})`);
+    grad.addColorStop(1, 'rgba(255, 226, 160, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 17, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 

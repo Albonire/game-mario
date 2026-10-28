@@ -56,6 +56,8 @@ export class Voxels {
 
   readonly sx: number;
   readonly sz: number;
+  /** Radio del entorno con que se estima la normal. 3 suaviza formas orgánicas; 1 conserva aristas de edificios. */
+  normalRadius = 3;
 
   private index(x: number, y: number, z: number) {
     return ((y * this.sz + (z + this.halfZ)) * this.sx) + (x + this.halfX);
@@ -225,14 +227,15 @@ export class Voxels {
             }
           }
           if (!exposed) continue;
-          // Normal suave: dirección opuesta a la masa en un entorno de radio 2.
+          // Normal suave: dirección opuesta a la masa en un entorno de radio `normalRadius`.
           let sx = 0;
           let sy = 0;
           let sz = 0;
           let filled = 0;
-          for (let dy = -3; dy <= 3; dy++) {
-            for (let dz = -3; dz <= 3; dz++) {
-              for (let dx = -3; dx <= 3; dx++) {
+          const nr = this.normalRadius;
+          for (let dy = -nr; dy <= nr; dy++) {
+            for (let dz = -nr; dz <= nr; dz++) {
+              for (let dx = -nr; dx <= nr; dx++) {
                 if (!dx && !dy && !dz) continue;
                 if (this.get(x + dx, y + dy, z + dz)) {
                   const w = 1 / (1 + dx * dx + dy * dy + dz * dz);
@@ -280,6 +283,10 @@ export interface RenderOptions {
   /** Luz: vector hacia la fuente en coordenadas de cámara. */
   light?: [number, number, number];
   outline?: RGB;
+  /** Tinte de la luz ambiente del tema; no afecta a los voxeles emisivos. */
+  ambient?: RGB;
+  /** Mezcla hacia el color de la bruma, para que lo lejano se funda con el horizonte. */
+  haze?: { color: RGB; amount: number };
 }
 
 const DEFAULT_LIGHT: [number, number, number] = [-0.42, 0.8, -0.44];
@@ -294,6 +301,8 @@ export function renderVoxels(model: Voxels, opts: RenderOptions): ImageData {
   const ly = light[1] / ll;
   const lz = light[2] / ll;
   const outline = opts.outline ?? OUTLINE;
+  const ambient = opts.ambient;
+  const haze = opts.haze && opts.haze.amount > 0 ? opts.haze : null;
   const color = new Uint8ClampedArray(W * H * 4);
   const depth = new Float32Array(W * H).fill(Infinity);
   const sy = Math.sin(opts.yaw);
@@ -332,9 +341,21 @@ export function renderVoxels(model: Voxels, opts: RenderOptions): ImageData {
     const cool = (1 - lit) * 0.22;
     const warm = Math.max(0, lit - 0.8) * 0.28;
     const em = pal.emissive;
-    const r = Math.min(255, pal.rgb[0] * k * (1 - cool * 0.7) + warm * 40 + em * 255 * 0.3);
-    const g = Math.min(255, pal.rgb[1] * k * (1 - cool * 0.35) + warm * 22 + em * 255 * 0.3);
-    const b = Math.min(255, pal.rgb[2] * k * (1 + cool * 0.45) + em * 255 * 0.2);
+    let r = Math.min(255, pal.rgb[0] * k * (1 - cool * 0.7) + warm * 40 + em * 255 * 0.3);
+    let g = Math.min(255, pal.rgb[1] * k * (1 - cool * 0.35) + warm * 22 + em * 255 * 0.3);
+    let b = Math.min(255, pal.rgb[2] * k * (1 + cool * 0.45) + em * 255 * 0.2);
+
+    if (ambient && em === 0) {
+      r *= ambient[0];
+      g *= ambient[1];
+      b *= ambient[2];
+    }
+    if (haze) {
+      const a = em > 0 ? haze.amount * 0.5 : haze.amount;
+      r += (haze.color[0] - r) * a;
+      g += (haze.color[1] - g) * a;
+      b += (haze.color[2] - b) * a;
+    }
 
     for (let oy = 0; oy < splat; oy++) {
       const y = py + oy;

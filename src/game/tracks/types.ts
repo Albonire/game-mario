@@ -61,12 +61,22 @@ export interface SceneryRule {
   cluster?: { chance: number; count: [number, number]; spread: number; types?: string[]; scale?: [number, number] };
   /** Solo en este tramo del bucle, en fracciones. */
   range?: [number, number];
+  /** Solo en curvas de radio menor que `maxRadius`, y en el lado exterior de la curva. */
+  corners?: { maxRadius: number };
 }
 
 export interface Landmark {
   type: string;
   x: number;
   y: number;
+  scale?: number;
+}
+
+/** Elemento colocado relativo a la salida: `along` hacia delante y `lateral` hacia la derecha, en unidades. */
+export interface StartLandmark {
+  type: string;
+  along: number;
+  lateral: number;
   scale?: number;
 }
 
@@ -86,5 +96,7 @@ export interface TrackDef {
   boostPads: number[];
   scenery: SceneryRule[];
   landmarks: Landmark[];
+  /** Gradas y elementos de la zona de salida. */
+  startside?: StartLandmark[];
   theme: ThemeDef;
 }

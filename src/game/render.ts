@@ -50,6 +50,7 @@ export class Mode7Renderer {
     const fogCfg = theme.fog;
     const [ambR, ambG, ambB] = theme.ambient;
     const sparkle = theme.water.sparkle * 70;
+    const waterMotion = theme.water.motion;
     const halfW = W / 2;
     const MASK = MAP_SIZE - 1;
     let o = 0;
@@ -140,7 +141,7 @@ export class Mode7Renderer {
               const base = Detail.WATER << 16;
               const a = detail[base | (v1 << 8) | u1];
               const c = detail[base | (v2 << 8) | u2];
-              let k = 1 + ((a + c - 256) / 256) * 0.16 * waterAmp;
+              let k = 1 + ((a + c - 256) / 256) * 0.16 * waterAmp * waterMotion;
               if (cls === Detail.FOAM) {
                 const f = detail[(Detail.FOAM << 16) | (v2 << 8) | u1];
                 k += ((f - 128) / 128) * 0.28 * waterAmp * (0.55 + 0.45 * Math.sin(time * 1.5 + wx * 0.04 + wy * 0.03));

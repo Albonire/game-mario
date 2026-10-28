@@ -40,8 +40,103 @@ function shade(hex: string, k: number) {
   return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
 }
 
+function parseHex(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/**
+ * Cordillera de picos: cada cumbre tiene una cara iluminada a la izquierda y otra en sombra a la
+ * derecha, barrancos que bajan en diagonal y una capa de nieve con borde dentado. Se calcula por
+ * píxel una sola vez por tema.
+ */
+function drawMountainStrip(layer: LayerSpec, pw: number, S: number): HTMLCanvasElement {
+  const height = Math.ceil(layer.height * S + 4 * S);
+  const strip = makeCanvas(pw * 2, height);
+  const w = Math.ceil(pw);
+  const ctx = strip.getContext('2d')!;
+  const img = ctx.createImageData(w, height);
+  const data = img.data;
+  const base = height;
+  const peakH = layer.height * S;
+  const rand = mulberry(layer.seed * 4801 + 17);
+
+  interface Peak {
+    x: number;
+    h: number;
+    half: number;
+  }
+  const peaks: Peak[] = [];
+  for (let x = -40 * S; x < pw + 40 * S; ) {
+    const r = rand();
+    const h = peakH * (0.34 + 0.66 * Math.pow(rand(), 0.7));
+    peaks.push({ x, h, half: h * (0.95 + r * 0.55) });
+    x += (14 + rand() * 40) * S;
+  }
+  // Las cumbres del borde se repiten al otro lado para que la tira cierre sin costura.
+  const first = peaks.filter((p) => p.x < 60 * S).map((p) => ({ ...p, x: p.x + pw }));
+  const last = peaks.filter((p) => p.x > pw - 60 * S).map((p) => ({ ...p, x: p.x - pw }));
+  peaks.push(...first, ...last);
+
+  const rock = parseHex(layer.color);
+  const snow = parseHex(layer.accent ?? '#ffffff');
+  const alpha = Math.round((layer.alpha ?? 1) * 255);
+  for (let x = 0; x < w; x++) {
+    const t = x / pw;
+    // Cumbre que domina esta columna y su altura (con dientes de sierra en la arista).
+    let h = 0;
+    let owner: Peak | null = null;
+    for (const p of peaks) {
+      const dx = Math.abs(x - p.x);
+      if (dx > p.half) continue;
+      const jag = (n2tp(t * 260, p.x * 0.01, 260, 256) - 0.5) * p.h * 0.1;
+      const v = p.h * (1 - dx / p.half) + jag * (1 - dx / p.half);
+      if (v > h) {
+        h = v;
+        owner = p;
+      }
+    }
+    if (!owner || h < 1) continue;
+    const lit = x < owner.x;
+    const top = Math.max(0, Math.floor(base - h));
+    const snowLine = owner.h * 0.6 + (n2tp(t * 190, owner.x * 0.02, 190, 256) - 0.5) * owner.h * 0.2;
+    for (let y = top; y < base; y++) {
+      const hy = base - y;
+      // Barrancos: vetas oscuras que siguen la pendiente de la cara.
+      const gully = n2tp(t * 150 + (lit ? 1 : -1) * y * 0.05, y * 0.12, 150, 256);
+      const streak = gully > 0.62 ? 0.78 : gully < 0.28 ? 1.1 : 1;
+      const depth = Math.min(1, (h - hy) / Math.max(1, owner.h * 0.9));
+      const faceLight = (lit ? 1.1 : 0.74) * streak * (1 - depth * 0.1);
+      let r = rock[0] * faceLight;
+      let g = rock[1] * faceLight;
+      let b = rock[2] * faceLight * (lit ? 1 : 1.08);
+      if (layer.accent && hy > snowLine) {
+        const k = lit ? 1 : 0.8;
+        const sk = streak > 1 ? 1.03 : streak < 1 ? 0.92 : 1;
+        r = snow[0] * k * sk;
+        g = snow[1] * k * sk;
+        b = Math.min(255, snow[2] * (lit ? 1 : 0.95) * sk);
+      }
+      // Bruma azulada que sube desde la base del valle.
+      const fog = Math.max(0, 1 - hy / (peakH * 0.5)) * 0.4;
+      r += (196 - r) * fog;
+      g += (212 - g) * fog;
+      b += (232 - b) * fog;
+      const i = (y * w + x) * 4;
+      data[i] = Math.min(255, r);
+      data[i + 1] = Math.min(255, g);
+      data[i + 2] = Math.min(255, b);
+      data[i + 3] = alpha;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  ctx.drawImage(strip, 0, 0, w, height, w, 0, w, height);
+  return strip;
+}
+
 /** Dibuja la silueta de una capa de horizonte en una tira que cubre 360 grados dos veces. */
 function drawLayerStrip(layer: LayerSpec, pw: number, S: number): HTMLCanvasElement {
+  if (layer.kind === 'mountains') return drawMountainStrip(layer, pw, S);
   const height = Math.ceil(layer.height * S + 4 * S);
   const strip = makeCanvas(pw * 2, height);
   const ctx = strip.getContext('2d')!;
@@ -55,44 +150,74 @@ function drawLayerStrip(layer: LayerSpec, pw: number, S: number): HTMLCanvasElem
     switch (layer.kind) {
       case 'islands': {
         const v = ring(t, 5, layer.seed, 3);
-        const island = Math.max(0, (v - 0.52) / 0.48);
-        return layer.height * S * (0.12 + Math.pow(island, 0.8) * 0.9);
+        const island = clamp((v - 0.47) / 0.15, 0, 1);
+        return layer.height * S * (0.05 + Math.pow(island, 0.75) * 0.95);
       }
       case 'dunes':
         return layer.height * S * (0.25 + 0.75 * ring(t, 6, layer.seed, 3));
-      case 'mountains': {
-        const v = ring(t, 4, layer.seed, 4);
-        const ridge = 1 - Math.abs(2 * v - 1);
-        return layer.height * S * (0.18 + 0.82 * Math.pow(ridge, 1.35));
-      }
       default:
         return 0;
     }
   };
 
   if (layer.kind === 'mesas') {
+    // Mesas con talud, farallones escalonados y tapa plana, iluminadas desde la izquierda.
+    const profile: Array<[number, number]> = [
+      [-1.35, 0],
+      [-1.04, 0.3],
+      [-0.98, 0.3],
+      [-0.95, 0.64],
+      [-0.86, 0.66],
+      [-0.84, 1],
+      [-0.55, 1],
+      [-0.3, 0.97],
+      [0.15, 1],
+      [0.5, 0.96],
+      [0.82, 1],
+      [0.86, 0.66],
+      [0.95, 0.64],
+      [0.98, 0.3],
+      [1.04, 0.3],
+      [1.35, 0],
+    ];
     let x = 0;
     while (x < pw) {
-      const w = (34 + rand() * 90) * S;
-      const gap = (rand() * 60 + 8) * S;
-      const h = layer.height * S * (0.45 + rand() * 0.55);
-      const slope = 4 * S;
-      ctx.fillStyle = layer.color;
-      ctx.beginPath();
-      ctx.moveTo(x, base);
-      ctx.lineTo(x + slope, base - h);
-      ctx.lineTo(x + w - slope, base - h);
-      ctx.lineTo(x + w, base);
-      ctx.closePath();
-      ctx.fill();
-      // Estratos y cara iluminada.
-      ctx.fillStyle = shade(layer.color, 0.78);
-      for (let y = base - h + 3 * S; y < base; y += (3 + rand() * 5) * S) ctx.fillRect(x + slope * 0.4, y, w - slope * 0.8, S);
-      if (layer.rim) {
-        ctx.fillStyle = layer.rim;
-        ctx.fillRect(x + slope, base - h, w - slope * 2, 1.5 * S);
-      }
-      x += w + gap;
+      const w = (22 + rand() * 46) * S;
+      const h = layer.height * S * (0.5 + rand() * 0.5);
+      const cx = x + w * 1.35;
+      const gap = (rand() * 50 + 4) * S;
+      const pts = profile.map(([dx, dy], i) => [cx + dx * w, base - dy * h * (i > 4 && i < 11 ? 0.98 + rand() * 0.04 : 1)] as const);
+      const draw = (shift: number) => {
+        ctx.save();
+        ctx.beginPath();
+        pts.forEach(([px, py], i) => (i ? ctx.lineTo(px + shift, py) : ctx.moveTo(px + shift, py)));
+        ctx.closePath();
+        const grad = ctx.createLinearGradient(cx - w * 1.2 + shift, 0, cx + w * 1.2 + shift, 0);
+        grad.addColorStop(0, shade(layer.color, 1.14));
+        grad.addColorStop(0.55, layer.color);
+        grad.addColorStop(1, shade(layer.color, 0.76));
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.clip();
+        // Estratos: vetas horizontales a distintas alturas.
+        for (let y = base - h + 2 * S; y < base; y += (2.4 + rand() * 4) * S) {
+          ctx.fillStyle = rand() < 0.5 ? 'rgba(40, 14, 8, 0.16)' : 'rgba(255, 220, 180, 0.1)';
+          ctx.fillRect(cx - w * 1.4 + shift, y, w * 2.8, rand() < 0.4 ? 1.5 * S : S);
+        }
+        // Surcos verticales en el farallón.
+        ctx.fillStyle = 'rgba(40, 14, 8, 0.14)';
+        for (let k = 0; k < 5; k++) {
+          const gx = cx + (rand() * 1.6 - 0.8) * w + shift;
+          ctx.fillRect(gx, base - h * 0.95, 1.2 * S, h * 0.62);
+        }
+        if (layer.rim) {
+          ctx.fillStyle = layer.rim;
+          ctx.fillRect(cx - w * 0.86 + shift, base - h, w * 1.72, 1.4 * S);
+        }
+        ctx.restore();
+      };
+      draw(0);
+      x += w * 2.7 + gap;
     }
   } else if (layer.kind === 'skyline') {
     let x = 0;
@@ -125,23 +250,16 @@ function drawLayerStrip(layer: LayerSpec, pw: number, S: number): HTMLCanvasElem
       x += w + (rand() < 0.3 ? rand() * 5 * S : 0);
     }
   } else {
-    // Perfil continuo columna a columna: islas, dunas y montañas.
+    // Perfil continuo columna a columna: islas y dunas.
     const heights = new Float32Array(Math.ceil(pw) + 2);
     for (let x = 0; x < heights.length; x++) heights[x] = heightAt(Math.min(x, pw));
     for (let x = 0; x < Math.ceil(pw); x++) {
       const h = heights[x];
-      const slope = heights[x + 1] - heights[x];
-      const lit = slope < 0 ? 1.12 : 0.88;
-      ctx.fillStyle = layer.kind === 'mountains' ? shade(layer.color, lit) : layer.color;
-      ctx.fillRect(x, base - h, 1.2, h);
-      if (layer.kind === 'mountains' && layer.accent && h > layer.height * S * 0.66) {
-        const cap = (h - layer.height * S * 0.66) * 1.2;
-        ctx.fillStyle = slope < 0 ? layer.accent : shade(layer.accent, 0.82);
-        ctx.fillRect(x, base - h, 1.2, cap);
-      }
-      if (layer.rim && layer.kind !== 'mountains') {
+      ctx.fillStyle = layer.color;
+      ctx.fillRect(x, base - h, 1, h);
+      if (layer.rim) {
         ctx.fillStyle = layer.rim;
-        ctx.fillRect(x, base - h, 1.2, S);
+        ctx.fillRect(x, base - h, 1, S);
       }
     }
   }
