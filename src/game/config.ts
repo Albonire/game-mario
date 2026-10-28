@@ -54,3 +54,15 @@ export const CAMERA = {
   /** Altura sobre el suelo. */
   HEIGHT: 21,
 } as const;
+
+/**
+ * Sombra de cada prop sobre el suelo, en unidades del mundo para escala 1.
+ * `rx` y `ry` son los semiejes de la base; `reach` es cuánto se alarga hacia el lado contrario al sol.
+ */
+export const PROP_SHADOW: Record<string, { rx: number; ry: number; reach: number }> = {
+  palm: { rx: 7, ry: 5, reach: 20 },
+  rock: { rx: 6, ry: 4, reach: 5 },
+  bush: { rx: 5, ry: 3.5, reach: 3 },
+  sign: { rx: 2, ry: 1.5, reach: 4 },
+  lighthouse: { rx: 12, ry: 9, reach: 70 },
+};

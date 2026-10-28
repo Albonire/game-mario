@@ -2,14 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import hero from '../assets/hero.jpg';
 import { ACHIEVEMENTS, ACHIEVEMENT_BY_ID, DIFFICULTIES, PILOT_BY_ID, PILOTS } from '../game/data';
 import { RaceEngine } from '../game/engine';
+import { TRACK_BY_ID } from '../game/tracks';
 import { formatTime } from '../game/track';
-import type { Difficulty, PilotId, RaceResult, RaceSnapshot } from '../game/types';
+import type { Difficulty, PilotId, RaceResult, RaceSnapshot, TrackId } from '../game/types';
+import type { QualityChoice } from '../game/view';
 import { Icon } from './Icons';
 import { RaceHud, TouchControls, type TouchControlName } from './Hud';
 import { TrackMap } from './TrackMap';
 
 interface RaceGameProps {
   pilotId: PilotId;
+  trackId: TrackId;
+  quality: QualityChoice;
   difficulty: Difficulty;
   muted: boolean;
   unlocked: Set<string>;
@@ -51,6 +55,7 @@ function StatBar({ label, value, color }: { label: string; value: number; color:
 
 function PreRace({
   pilotId,
+  trackId,
   difficulty,
   muted,
   onPilot,
@@ -60,6 +65,7 @@ function PreRace({
   onClose,
 }: {
   pilotId: PilotId;
+  trackId: TrackId;
   difficulty: Difficulty;
   muted: boolean;
   onPilot: (id: PilotId) => void;
@@ -175,7 +181,7 @@ function PreRace({
             </div>
 
             <div className="pre-map relative mx-auto mt-2 max-w-[206px] overflow-hidden rounded-[12px] border border-white/10 bg-[#071713] p-1">
-              <TrackMap className="mx-auto h-auto w-full" />
+              <TrackMap trackId={trackId} className="mx-auto h-auto w-full" />
               <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-white/10 bg-[#06120f]/80 px-2 py-1">
                 <p className="font-mono text-[6px] uppercase tracking-[0.16em] text-white/40">Récord</p>
                 <p className="font-mono text-[10px] font-medium text-[#f6f1e4]">00:33.80</p>
@@ -262,6 +268,8 @@ function PreRace({
 
 function RaceView({
   pilotId,
+  trackId,
+  quality,
   difficulty,
   muted,
   onToggleMute,
@@ -271,6 +279,8 @@ function RaceView({
   onGarage,
 }: {
   pilotId: PilotId;
+  trackId: TrackId;
+  quality: QualityChoice;
   difficulty: Difficulty;
   muted: boolean;
   onToggleMute: () => void;
@@ -284,13 +294,17 @@ function RaceView({
   const engineRef = useRef<RaceEngine | null>(null);
   const resultRef = useRef<RaceResult | null>(null);
   const [snapshot, setSnapshot] = useState<RaceSnapshot | null>(null);
+  const [loading, setLoading] = useState({ fraction: 0, label: 'Preparando' });
   const [paused, setPaused] = useState(false);
   const [result, setResult] = useState<RaceResult | null>(null);
   const [earned, setEarned] = useState<string[]>([]);
   const [toasts, setToasts] = useState<Array<{ key: number; id: string }>>([]);
   const [showFps, setShowFps] = useState(false);
   const [useTouch, setUseTouch] = useState(false);
-  const demo = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('demo') === '1';
+  const query = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const demo = query?.get('demo') === '1';
+  const qParam = query?.get('q');
+  const qualityChoice: QualityChoice = qParam === 'alta' || qParam === 'media' || qParam === 'baja' ? qParam : quality;
 
   const callbacks = useRef({ onUnlock, onExit, onGarage, onRestart });
   callbacks.current = { onUnlock, onExit, onGarage, onRestart };
@@ -307,6 +321,11 @@ function RaceView({
     if (!canvas) return;
     const engine = new RaceEngine(canvas, {
       pilotId,
+      trackId,
+      quality: qualityChoice,
+      debug: query?.get('debug') === '1',
+      timeScale: query?.get('debug') === '1' ? Number(query.get('speed') ?? 1) || 1 : 1,
+      onLoadProgress: (fraction, label) => setLoading({ fraction, label }),
       difficulty,
       autoThrottle: window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0,
       muted,
@@ -337,7 +356,7 @@ function RaceView({
       engineRef.current = null;
     };
     // El motor se vuelve a crear únicamente cuando se reinicia la carrera.
-  }, [pilotId, difficulty]);
+  }, [pilotId, trackId, difficulty]);
 
   useEffect(() => {
     engineRef.current?.setPaused(paused);
@@ -435,8 +454,8 @@ function RaceView({
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#061713]">
               <div className="text-center">
                 <div className="mx-auto h-11 w-11 animate-spin rounded-full border-2 border-white/10 border-t-[#d9f45a]" />
-                <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.25em] text-white/45">Trazando la isla…</p>
-                <p className="mt-1 font-display text-lg font-semibold text-white/80">Isla del Faro</p>
+                <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.25em] text-white/45">{loading.label}… {Math.round(loading.fraction * 100)} %</p>
+                <p className="mt-1 font-display text-lg font-semibold text-white/80">{TRACK_BY_ID[trackId].name}</p>
               </div>
             </div>
           )}
@@ -699,6 +718,7 @@ export function RaceGame(props: RaceGameProps) {
       {stage === 'select' ? (
         <PreRace
           pilotId={props.pilotId}
+          trackId={props.trackId}
           difficulty={props.difficulty}
           muted={props.muted}
           onPilot={props.onPilot}
@@ -714,6 +734,8 @@ export function RaceGame(props: RaceGameProps) {
         <RaceView
           key={raceKey}
           pilotId={props.pilotId}
+          trackId={props.trackId}
+          quality={props.quality}
           difficulty={props.difficulty}
           muted={props.muted}
           onToggleMute={props.onToggleMute}

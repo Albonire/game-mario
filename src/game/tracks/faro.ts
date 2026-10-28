@@ -1,0 +1,82 @@
+import { FARO_THEME } from '../themes';
+import { Mat } from '../terrain/materials';
+import type { TrackDef } from './types';
+
+/** Isla del Faro: el trazado original con una isla de contorno ondulado y un faro sobre el acantilado. */
+export const FARO: TrackDef = {
+  id: 'faro',
+  name: 'Isla del Faro',
+  tagline: 'Costa abierta, arena y un faro sobre el acantilado.',
+  laps: 3,
+  layout: {
+    kind: 'spline',
+    points: [
+      { x: 1024, y: 1660 },
+      { x: 1340, y: 1710 },
+      { x: 1590, y: 1600 },
+      { x: 1700, y: 1370 },
+      { x: 1660, y: 1110 },
+      { x: 1510, y: 960 },
+      { x: 1320, y: 970 },
+      { x: 1190, y: 1100 },
+      { x: 1060, y: 1180 },
+      { x: 900, y: 1120 },
+      { x: 830, y: 960 },
+      { x: 900, y: 760 },
+      { x: 1010, y: 610 },
+      { x: 830, y: 490 },
+      { x: 610, y: 500 },
+      { x: 430, y: 610 },
+      { x: 370, y: 820 },
+      { x: 430, y: 1040 },
+      { x: 570, y: 1190 },
+      { x: 610, y: 1390 },
+      { x: 540, y: 1540 },
+      { x: 580, y: 1670 },
+      { x: 800, y: 1750 },
+    ],
+  },
+  startAt: 0,
+  terrain: {
+    kind: 'island',
+    cx: 1040,
+    cy: 1080,
+    sy: 0.94,
+    base: 880,
+    harmonics: [
+      [100, 3, 0.4],
+      [55, 5, 2.1],
+      [28, 9, 1.1],
+    ],
+  },
+  patches: [],
+  blobs: [{ x: 1802, y: 1310, r: 78, mat: Mat.ROCK, seed: 4 }],
+  boostPads: [0.21, 0.69],
+  scenery: [
+    {
+      types: [
+        ['palm', 4],
+        ['rock', 2],
+        ['bush', 2],
+        ['sign', 1],
+      ],
+      every: 56,
+      offsetMin: 56,
+      offsetMax: 116,
+      chance: 1,
+      minMargin: 26,
+      scale: [0.82, 1.27],
+      cluster: { chance: 0.55, count: [1, 1], spread: 34, types: ['rock', 'bush', 'palm'], scale: [0.6, 1] },
+    },
+  ],
+  landmarks: [
+    { type: 'lighthouse', x: 1802, y: 1310, scale: 1.15 },
+    { type: 'rock', x: 1760, y: 1360, scale: 1.35 },
+    { type: 'rock', x: 1830, y: 1240, scale: 1.1 },
+    { type: 'bouy', x: 1980, y: 760 },
+    { type: 'bouy', x: 1960, y: 1720 },
+    { type: 'bouy', x: 300, y: 1530 },
+    { type: 'bouy', x: 560, y: 260 },
+  ],
+  theme: FARO_THEME,
+};

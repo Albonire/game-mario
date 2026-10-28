@@ -11,12 +11,24 @@ import {
   TRACK_FACTS,
   TRACK_SECTORS,
 } from './game/data';
-import type { Difficulty, PilotId } from './game/types';
+import type { Difficulty, PilotId, TrackId } from './game/types';
+import { DEFAULT_TRACK, isTrackId } from './game/tracks';
 
 const PILOT_KEY = 'tux-racing-pilot-v1';
 const DIFFICULTY_KEY = 'tux-racing-difficulty-v1';
 const ACHIEVEMENT_KEY = 'tux-racing-achievements-v1';
 const MUTE_KEY = 'tux-racing-muted-v1';
+const TRACK_KEY = 'tux-racing-track-v1';
+
+function loadTrack(): TrackId {
+  try {
+    const stored = localStorage.getItem(TRACK_KEY);
+    if (isTrackId(stored)) return stored;
+  } catch {
+    /* almacenamiento no disponible */
+  }
+  return DEFAULT_TRACK;
+}
 
 function loadPilot(): PilotId {
   try {
@@ -207,6 +219,7 @@ export default function App() {
   const [gameOpen, setGameOpen] = useState(false);
   const [selectedPilot, setSelectedPilot] = useState<PilotId>(loadPilot);
   const [difficulty, setDifficulty] = useState<Difficulty>(loadDifficulty);
+  const [trackId] = useState<TrackId>(loadTrack);
   const [unlocked, setUnlocked] = useState<Set<string>>(loadAchievements);
   const [muted, setMuted] = useState<boolean>(loadMuted);
   const [controlTab, setControlTab] = useState<'keyboard' | 'gamepad' | 'touch'>('keyboard');
@@ -223,12 +236,13 @@ export default function App() {
     try {
       localStorage.setItem(PILOT_KEY, selectedPilot);
       localStorage.setItem(DIFFICULTY_KEY, difficulty);
+      localStorage.setItem(TRACK_KEY, trackId);
       localStorage.setItem(ACHIEVEMENT_KEY, JSON.stringify([...unlocked]));
       localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
     } catch {
       /* modo privado */
     }
-  }, [selectedPilot, difficulty, unlocked, muted]);
+  }, [selectedPilot, difficulty, trackId, unlocked, muted]);
 
   useEffect(() => {
     document.body.style.overflow = gameOpen ? 'hidden' : '';
@@ -981,6 +995,8 @@ export default function App() {
       {gameOpen && (
         <RaceGame
           pilotId={selectedPilot}
+          trackId={trackId}
+          quality="auto"
           difficulty={difficulty}
           muted={muted}
           unlocked={unlocked}

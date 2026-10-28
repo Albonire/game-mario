@@ -1,14 +1,12 @@
-import { mulberry } from '../utils/rng';
 import { CAMERA } from './config';
-import type { Decoration, DecorationType, TrackData, TrackPoint, Vec } from './types';
+import { TRACK_BY_ID } from './tracks';
+import type { LayoutSpec, TrackDef } from './tracks/types';
+import type { TrackData, TrackId, TrackPoint, TrackStats, Vec } from './types';
 
 export const MAP_SIZE = 2048;
+
 export const WORLD = {
-  W: 320,
-  H: 180,
-  HORIZON: 62,
   CAM_H: CAMERA.HEIGHT,
-  FOCAL: 160,
   CAM_DIST: CAMERA.DIST,
   ROAD_HALF: 26,
   CURB_HALF: 34,
@@ -19,33 +17,8 @@ export const WORLD = {
   TURN: 2.3,
 } as const;
 
-export const ISLAND = { cx: 1040, cy: 1080, sy: 0.94 };
-
-const CONTROL_POINTS: Vec[] = [
-  { x: 1024, y: 1660 },
-  { x: 1340, y: 1710 },
-  { x: 1590, y: 1600 },
-  { x: 1700, y: 1370 },
-  { x: 1660, y: 1110 },
-  { x: 1510, y: 960 },
-  { x: 1320, y: 970 },
-  { x: 1190, y: 1100 },
-  { x: 1060, y: 1180 },
-  { x: 900, y: 1120 },
-  { x: 830, y: 960 },
-  { x: 900, y: 760 },
-  { x: 1010, y: 610 },
-  { x: 830, y: 490 },
-  { x: 610, y: 500 },
-  { x: 430, y: 610 },
-  { x: 370, y: 820 },
-  { x: 430, y: 1040 },
-  { x: 570, y: 1190 },
-  { x: 610, y: 1390 },
-  { x: 540, y: 1540 },
-  { x: 580, y: 1670 },
-  { x: 800, y: 1750 },
-];
+/** Separación entre puntos del eje de la pista, en unidades. */
+export const TRACK_STEP = 3.5;
 
 const TAU = Math.PI * 2;
 
@@ -66,38 +39,76 @@ function catmull(p0: number, p1: number, p2: number, p3: number, t: number) {
   return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
 }
 
-function sampleSpline(): Vec[] {
+function sampleSpline(control: Vec[], samples: number): Vec[] {
   const result: Vec[] = [];
-  const n = CONTROL_POINTS.length;
+  const n = control.length;
   for (let i = 0; i < n; i++) {
-    const a = CONTROL_POINTS[(i - 1 + n) % n];
-    const b = CONTROL_POINTS[i];
-    const c = CONTROL_POINTS[(i + 1) % n];
-    const d = CONTROL_POINTS[(i + 2) % n];
-    for (let s = 0; s < 40; s++) {
-      const t = s / 40;
+    const a = control[(i - 1 + n) % n];
+    const b = control[i];
+    const c = control[(i + 1) % n];
+    const d = control[(i + 2) % n];
+    for (let s = 0; s < samples; s++) {
+      const t = s / samples;
       result.push({ x: catmull(a.x, b.x, c.x, d.x, t), y: catmull(a.y, b.y, c.y, d.y, t) });
     }
   }
   return result;
 }
 
-function addNormals(points: Vec[]): TrackPoint[] {
-  const n = points.length;
-  return points.map((p, i) => {
-    const prev = points[(i - 1 + n) % n];
-    const next = points[(i + 1) % n];
-    const angle = Math.atan2(next.x - prev.x, -(next.y - prev.y));
-    return { ...p, angle, nx: Math.cos(angle), ny: Math.sin(angle) };
-  });
+/** Polilínea cerrada con cada esquina sustituida por un arco tangente de radio `r`. */
+function sampleRounded(control: Array<Vec & { r: number }>): Vec[] {
+  const n = control.length;
+  const out: Vec[] = [];
+  for (let i = 0; i < n; i++) {
+    const p0 = control[(i - 1 + n) % n];
+    const p1 = control[i];
+    const p2 = control[(i + 1) % n];
+    const v1 = { x: p0.x - p1.x, y: p0.y - p1.y };
+    const v2 = { x: p2.x - p1.x, y: p2.y - p1.y };
+    const l1 = Math.hypot(v1.x, v1.y);
+    const l2 = Math.hypot(v2.x, v2.y);
+    const u1 = { x: v1.x / l1, y: v1.y / l1 };
+    const u2 = { x: v2.x / l2, y: v2.y / l2 };
+    const interior = Math.acos(clamp(u1.x * u2.x + u1.y * u2.y, -1, 1));
+    if (p1.r === 0 || interior > Math.PI - 0.02) {
+      out.push({ x: p1.x, y: p1.y });
+      continue;
+    }
+    let tangent = p1.r / Math.tan(interior / 2);
+    const maxTangent = Math.min(l1, l2) * 0.49;
+    let radius = p1.r;
+    if (tangent > maxTangent) {
+      tangent = maxTangent;
+      radius = tangent * Math.tan(interior / 2);
+    }
+    const a = { x: p1.x + u1.x * tangent, y: p1.y + u1.y * tangent };
+    const b = { x: p1.x + u2.x * tangent, y: p1.y + u2.y * tangent };
+    const bis = { x: u1.x + u2.x, y: u1.y + u2.y };
+    const bl = Math.hypot(bis.x, bis.y);
+    bis.x /= bl;
+    bis.y /= bl;
+    const centerDist = radius / Math.sin(interior / 2);
+    const c = { x: p1.x + bis.x * centerDist, y: p1.y + bis.y * centerDist };
+    const a0 = Math.atan2(a.y - c.y, a.x - c.x);
+    const a1 = Math.atan2(b.y - c.y, b.x - c.x);
+    let sweep = a1 - a0;
+    while (sweep > Math.PI) sweep -= TAU;
+    while (sweep < -Math.PI) sweep += TAU;
+    const steps = Math.max(6, Math.ceil((Math.abs(sweep) * radius) / 4));
+    for (let s = 0; s <= steps; s++) {
+      const th = a0 + (sweep * s) / steps;
+      out.push({ x: c.x + Math.cos(th) * radius, y: c.y + Math.sin(th) * radius });
+    }
+  }
+  return out;
 }
 
-function resample(fine: Vec[], step: number): TrackPoint[] {
+function resample(dense: Vec[], step: number): Vec[] {
   const out: Vec[] = [];
   let carry = 0;
-  for (let i = 0; i < fine.length; i++) {
-    const a = fine[i];
-    const b = fine[(i + 1) % fine.length];
+  for (let i = 0; i < dense.length; i++) {
+    const a = dense[i];
+    const b = dense[(i + 1) % dense.length];
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const len = Math.hypot(dx, dy);
@@ -110,25 +121,98 @@ function resample(fine: Vec[], step: number): TrackPoint[] {
     }
     carry = d - len;
   }
-  return addNormals(out);
+  return out;
 }
 
-export function islandBoundary(angle: number) {
-  return (
-    880 +
-    100 * Math.sin(3 * angle + 0.4) +
-    55 * Math.sin(5 * angle + 2.1) +
-    28 * Math.sin(9 * angle + 1.1)
-  );
+function addNormals(points: Vec[]): TrackPoint[] {
+  const n = points.length;
+  return points.map((p, i) => {
+    const prev = points[(i - 1 + n) % n];
+    const next = points[(i + 1) % n];
+    const angle = Math.atan2(next.x - prev.x, -(next.y - prev.y));
+    return { ...p, angle, nx: Math.cos(angle), ny: Math.sin(angle) };
+  });
 }
 
-export function islandInfo(x: number, y: number) {
-  const dx = x - ISLAND.cx;
-  const dy = (y - ISLAND.cy) / ISLAND.sy;
-  const angle = Math.atan2(dy, dx);
-  const radius = Math.hypot(dx, dy);
-  const edge = islandBoundary(angle);
-  return { angle, radius, edge, margin: edge - radius, inside: radius < edge };
+function layoutPoints(layout: LayoutSpec): Vec[] {
+  const dense = layout.kind === 'spline' ? sampleSpline(layout.points, layout.samples ?? 40) : sampleRounded(layout.points);
+  return resample(dense, TRACK_STEP);
+}
+
+/** Radio local de curvatura con una ventana de +-8 puntos (infinito en recta). */
+function localRadii(points: Vec[]): number[] {
+  const n = points.length;
+  const heading = points.map((_, i) => {
+    const a = points[(i - 1 + n) % n];
+    const b = points[(i + 1) % n];
+    return Math.atan2(b.x - a.x, -(b.y - a.y));
+  });
+  const window = 8;
+  const arc = 2 * window * TRACK_STEP;
+  return heading.map((_, i) => {
+    const d = Math.abs(angleDelta(heading[(i - window + n) % n], heading[(i + window) % n]));
+    return d < 1e-4 ? Infinity : arc / d;
+  });
+}
+
+/** Centro de la recta más larga (tramo continuo con radio > 900). */
+function longestStraightCenter(radii: number[]): { center: number; length: number } {
+  const n = radii.length;
+  let bestStart = 0;
+  let bestLen = 0;
+  let runStart = -1;
+  let runLen = 0;
+  for (let k = 0; k < 2 * n; k++) {
+    if (radii[k % n] > 900) {
+      if (runStart < 0) runStart = k;
+      runLen++;
+      if (runLen > bestLen && runLen <= n) {
+        bestLen = runLen;
+        bestStart = runStart;
+      }
+    } else {
+      runStart = -1;
+      runLen = 0;
+    }
+  }
+  return { center: (bestStart + Math.floor(bestLen / 2)) % n, length: bestLen * TRACK_STEP };
+}
+
+function computeStats(points: Vec[], length: number): TrackStats {
+  const n = points.length;
+  const radii = localRadii(points);
+  let minRadius = Infinity;
+  for (const r of radii) minRadius = Math.min(minRadius, r);
+  const heading = points.map((_, i) => {
+    const a = points[(i - 1 + n) % n];
+    const b = points[(i + 1) % n];
+    return Math.atan2(b.x - a.x, -(b.y - a.y));
+  });
+  // Curvas: tramos contiguos con radio < 260 y giro acumulado mayor de 0,45 rad.
+  let first = 0;
+  while (first < n && radii[first] < 260) first++;
+  let corners = 0;
+  let turn = 0;
+  let inRun = false;
+  for (let k = 0; k < n; k++) {
+    const idx = (first + k) % n;
+    if (radii[idx] < 260) {
+      inRun = true;
+      turn += angleDelta(heading[idx], heading[(idx + 1) % n]);
+    } else if (inRun) {
+      if (Math.abs(turn) > 0.45) corners++;
+      inRun = false;
+      turn = 0;
+    }
+  }
+  if (inRun && Math.abs(turn) > 0.45) corners++;
+  return {
+    length,
+    meters: length / 5,
+    corners,
+    minRadius: Number.isFinite(minRadius) ? minRadius : 9999,
+    longestStraight: longestStraightCenter(radii).length,
+  };
 }
 
 export function nearestPoint(points: TrackPoint[], x: number, y: number) {
@@ -154,107 +238,32 @@ export function atProgress(points: TrackPoint[], t: number, lane = 0): Vec {
   return { x: p.x + p.nx * lane, y: p.y + p.ny * lane };
 }
 
-export function trackProgress(track: TrackData, x: number, y: number) {
-  const nearest = nearestPoint(track.points, x, y);
-  return { p: track.points[nearest.index], index: nearest.index, progress: nearest.index / track.points.length };
-}
+/** Fracciones por defecto de cajas, latas y bananas a lo largo del bucle. */
+const DEFAULT_BOXES = [0.07, 0.15, 0.245, 0.33, 0.43, 0.53, 0.62, 0.72, 0.82, 0.92];
+const DEFAULT_BANANAS = [0.29, 0.5, 0.66, 0.86];
 
-export function surfaceAt(track: TrackData, x: number, y: number) {
-  const info = islandInfo(x, y);
-  if (!info.inside) return 'sea' as const;
-  const nearest = nearestPoint(track.points, x, y);
-  if (nearest.dist <= WORLD.ROAD_HALF) return 'asphalt' as const;
-  if (nearest.dist <= WORLD.CURB_HALF) return 'curb' as const;
-  if (info.margin < 85) return 'sand' as const;
-  return 'grass' as const;
-}
-
-function validDecorSpot(track: TrackData, x: number, y: number) {
-  const info = islandInfo(x, y);
-  if (!info.inside || info.margin < 26) return false;
-  return nearestPoint(track.points, x, y).dist > WORLD.CURB_HALF + 8;
-}
-
-function createDecorations(track: Omit<TrackData, 'decorations' | 'svgPath' | 'minimapPoints'>): Decoration[] {
-  const rand = mulberry(1907);
-  const result: Decoration[] = [];
-  const every = Math.max(4, Math.round(56 / track.step));
-  const types: DecorationType[] = ['palm', 'palm', 'rock', 'bush', 'palm', 'sign', 'palm', 'bush', 'rock'];
-  for (let i = 0; i < track.points.length; i += every) {
-    const p = track.points[i];
-    const alternate = Math.floor(i / every) % 2 === 0 ? 1 : -1;
-    const candidates = [alternate, -alternate];
-    for (const side of candidates) {
-      const offset = WORLD.CURB_HALF + 22 + rand() * 60;
-      const x = p.x + p.nx * side * offset;
-      const y = p.y + p.ny * side * offset * 0.84;
-      if (!validDecorSpot(track as TrackData, x, y)) continue;
-      const type = types[Math.floor(rand() * types.length)];
-      result.push({ x, y, type, side, scale: 0.82 + rand() * 0.45 });
-      // Ráfagas de vegetación para que la isla no se sienta vacía.
-      if (rand() > 0.45) {
-        const ox = x + p.nx * side * (14 + rand() * 26) + (rand() - 0.5) * 18;
-        const oy = y + p.ny * side * (12 + rand() * 22) + (rand() - 0.5) * 18;
-        if (validDecorSpot(track as TrackData, ox, oy)) {
-          const extra = types[Math.floor(rand() * types.length)];
-          if (extra === 'rock' || extra === 'bush' || extra === 'palm') {
-            result.push({ x: ox, y: oy, type: extra, side, scale: 0.6 + rand() * 0.4 });
-          }
-        }
-      }
-      break;
-    }
+export function buildTrackGeometry(def: TrackDef): TrackData {
+  let raw = layoutPoints(def.layout);
+  if (def.startAt === 'auto') {
+    const { center } = longestStraightCenter(localRadii(raw));
+    raw = [...raw.slice(center), ...raw.slice(0, center)];
+  } else if (def.startAt > 0) {
+    const cut = Math.floor(raw.length * def.startAt);
+    raw = [...raw.slice(cut), ...raw.slice(0, cut)];
   }
-
-  const lighthouse: Vec = { x: 1802, y: 1310 };
-  const s0 = track.start;
-  result.push({ x: s0.x, y: s0.y, type: 'arch', side: 0, scale: 1 });
-  result.push({ x: lighthouse.x, y: lighthouse.y, type: 'lighthouse', side: 0, scale: 1.15 });
-  // Rocas del acantilado junto al faro.
-  result.push({ x: 1760, y: 1360, type: 'rock', side: 0, scale: 1.35 });
-  result.push({ x: 1830, y: 1240, type: 'rock', side: 0, scale: 1.1 });
-
-  // Boyas lejanas para dar vida al mar.
-  const buoySeeds: Vec[] = [
-    { x: 1980, y: 760 },
-    { x: 1960, y: 1720 },
-    { x: 300, y: 1530 },
-    { x: 560, y: 260 },
-  ];
-  for (const b of buoySeeds) {
-    if (!islandInfo(b.x, b.y).inside) result.push({ ...b, type: 'bouy', side: 0, scale: 1 });
-  }
-  return result;
-}
-
-export function buildTrack(): TrackData {
-  const fine = addNormals(sampleSpline());
-  const points = resample(fine, 3.5);
+  const points = addNormals(raw);
   let length = 0;
   for (let i = 0; i < points.length; i++) {
     const a = points[i];
     const b = points[(i + 1) % points.length];
     length += Math.hypot(b.x - a.x, b.y - a.y);
   }
-  const start = points[0];
-
-  const progressAt = (t: number, lane = 0) => atProgress(points, t, lane);
-  const base = {
-    points,
-    fine,
-    length,
-    step: 3.5,
-    start,
-    lighthouse: { x: 1802, y: 1310 },
-    width: WORLD.ROAD_HALF * 2,
-    itemBoxes: [0.07, 0.15, 0.245, 0.33, 0.43, 0.53, 0.62, 0.72, 0.82, 0.92].map((t, i) =>
-      progressAt(t, i % 2 === 0 ? -11 : 11),
-    ),
-    nitroCans: Array.from({ length: 20 }, (_, i) => progressAt(0.035 + i * 0.048, i % 2 === 0 ? -17 : 17)),
-    bananas: [0.29, 0.5, 0.66, 0.86].map((t, i) => progressAt(t, [-14, 10, 2, 17][i])),
-    boostPads: [0.21, 0.69].map((t) => ({ ...progressAt(t, 0), progress: t })),
-  };
-  const decorations = createDecorations(base);
+  const at = (t: number, lane = 0) => atProgress(points, t, lane);
+  const lanePattern = (i: number, lane: number) => (i % 2 === 0 ? -lane : lane);
+  const boostPads = def.boostPads.map((t) => {
+    const p = at(t, 0);
+    return { ...p, progress: t, angle: points[Math.floor(t * points.length) % points.length].angle };
+  });
 
   // Proyección a un lienzo de 100 x 100 para el minimapa.
   let minX = Infinity;
@@ -274,26 +283,38 @@ export function buildTrack(): TrackData {
   const minimapPoints = points.filter((_, i) => i % 5 === 0).map((p) => ({ x: p.x * scale + ox, y: p.y * scale + oy }));
   const svgPath = minimapPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') + ' Z';
 
-  return { ...base, decorations, svgPath, minimapPoints };
+  return {
+    id: def.id,
+    points,
+    length,
+    step: TRACK_STEP,
+    start: points[0],
+    width: WORLD.ROAD_HALF * 2,
+    itemBoxes: DEFAULT_BOXES.map((t, i) => at(t, lanePattern(i, 11))),
+    nitroCans: Array.from({ length: 20 }, (_, i) => at(0.035 + i * 0.048, lanePattern(i, 17))),
+    bananas: DEFAULT_BANANAS.map((t, i) => at(t, [-14, 10, 2, 17][i])),
+    boostPads,
+    svgPath,
+    minimapPoints,
+    minimap: { scale, ox, oy },
+    stats: computeStats(points, length),
+  };
+}
+
+const geometryCache = new Map<TrackId, TrackData>();
+
+/** Geometría de una pista, calculada una vez. Es barata y sirve a la interfaz y al motor. */
+export function getTrack(id: TrackId): TrackData {
+  let hit = geometryCache.get(id);
+  if (!hit) {
+    hit = buildTrackGeometry(TRACK_BY_ID[id]);
+    geometryCache.set(id, hit);
+  }
+  return hit;
 }
 
 export function worldToMinimap(track: TrackData, x: number, y: number) {
-  // Reutiliza la misma proyección que el trazado del minimapa.
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of track.points) {
-    minX = Math.min(minX, p.x);
-    minY = Math.min(minY, p.y);
-    maxX = Math.max(maxX, p.x);
-    maxY = Math.max(maxY, p.y);
-  }
-  const pad = 7;
-  const scale = (100 - pad * 2) / Math.max(maxX - minX, maxY - minY);
-  const ox = pad - minX * scale + (100 - pad * 2 - (maxX - minX) * scale) / 2;
-  const oy = pad - minY * scale + (100 - pad * 2 - (maxY - minY) * scale) / 2;
-  return { x: x * scale + ox, y: y * scale + oy };
+  return { x: x * track.minimap.scale + track.minimap.ox, y: y * track.minimap.scale + track.minimap.oy };
 }
 
 export function formatTime(seconds: number) {

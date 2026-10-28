@@ -1,7 +1,20 @@
 export type PilotId = 'pingui' | 'nu' | 'draco' | 'pio';
 export type ItemId = 'turbo' | 'banana' | 'bowling';
 export type Difficulty = 'paseo' | 'piloto' | 'leyenda';
-export type Surface = 'asphalt' | 'curb' | 'grass' | 'sand' | 'sea' | 'boost';
+export type TrackId = 'faro' | 'canon' | 'cumbre' | 'neon';
+export type Surface =
+  | 'asphalt'
+  | 'curb'
+  | 'grass'
+  | 'sand'
+  | 'sea'
+  | 'boost'
+  | 'dirt'
+  | 'snow'
+  | 'deepsnow'
+  | 'ice'
+  | 'concrete'
+  | 'wet';
 
 export interface PilotSpec {
   topSpeed: number;
@@ -34,7 +47,8 @@ export interface Vec {
   y: number;
 }
 
-export type DecorationType = 'palm' | 'rock' | 'bush' | 'sign' | 'arch' | 'lighthouse' | 'bouy';
+/** Tipo de prop de escenario. Cada pista registra los suyos en `sprites/props`. */
+export type DecorationType = string;
 
 export interface Decoration extends Vec {
   type: DecorationType;
@@ -48,21 +62,36 @@ export interface TrackPoint extends Vec {
   ny: number;
 }
 
+/** Cifras de una pista calculadas del trazado, nunca escritas a mano. */
+export interface TrackStats {
+  /** Longitud en unidades del mundo. */
+  length: number;
+  /** Longitud en metros (5 unidades = 1 m). */
+  meters: number;
+  /** Curvas reales: radio < 260 u y giro acumulado > 26 grados. */
+  corners: number;
+  /** Radio mínimo en unidades. */
+  minRadius: number;
+  /** Recta más larga en unidades. */
+  longestStraight: number;
+}
+
 export interface TrackData {
+  id: TrackId;
   points: TrackPoint[];
-  fine: TrackPoint[];
   length: number;
   step: number;
   start: TrackPoint;
-  decorations: Decoration[];
   itemBoxes: Vec[];
   nitroCans: Vec[];
   bananas: Vec[];
-  boostPads: Array<Vec & { progress: number }>;
-  lighthouse: Vec;
+  boostPads: Array<Vec & { progress: number; angle: number }>;
+  width: number;
   svgPath: string;
   minimapPoints: Vec[];
-  width: number;
+  /** Proyección del mundo al minimapa de 100 x 100. */
+  minimap: { scale: number; ox: number; oy: number };
+  stats: TrackStats;
 }
 
 export interface Camera {
@@ -116,6 +145,8 @@ export interface RaceSnapshot {
   fps: number;
   totalLaps: number;
   rescuing: boolean;
+  wrongWay: boolean;
+  tier: 'alta' | 'media' | 'baja';
 }
 
 export interface RaceResult {
@@ -124,6 +155,7 @@ export interface RaceResult {
   totalTime: number;
   bestLap: number;
   lastLap: number;
+  trackId: TrackId;
 }
 
 export interface Achievement {
