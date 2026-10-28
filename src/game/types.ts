@@ -89,6 +89,8 @@ export interface TrackData {
   width: number;
   svgPath: string;
   minimapPoints: Vec[];
+  /** Velocidad máxima segura (u/s) en cada punto del eje según la curvatura, con frenada anticipada. */
+  speedProfile: Float32Array;
   /** Proyección del mundo al minimapa de 100 x 100. */
   minimap: { scale: number; ox: number; oy: number };
   stats: TrackStats;
@@ -146,6 +148,8 @@ export interface RaceSnapshot {
   totalLaps: number;
   rescuing: boolean;
   wrongWay: boolean;
+  /** La última vuelta no contó porque se saltó parte del circuito. */
+  lapRejected: boolean;
   tier: 'alta' | 'media' | 'baja';
 }
 

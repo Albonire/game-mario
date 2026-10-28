@@ -1,5 +1,5 @@
 import { getSprite, propSprite } from './art';
-import { KART, PICKUP, PICKUP_WIDTH, PROP_WIDTH } from './config';
+import { KART, PICKUP, PICKUP_WIDTH, PROP_WIDTH, SECTORS } from './config';
 import { BOX_WEIGHTS, DIFFICULTY_BY_ID, PILOTS, PILOT_BY_ID } from './data';
 import { GameAudio } from './audio';
 import { Mode7Renderer, drawWorldSprite, project } from './render';
@@ -50,6 +50,9 @@ interface Kart {
   immune: number;
   rescue: number;
   wrongClock: number;
+  /** Sector actual del bucle y cuántos avances de sector acumula la vuelta en curso. */
+  sector: number;
+  sectorSteps: number;
   /** Veces que cayó al vacío y fue rescatado. */
   rescues: number;
   driftHeld: boolean;
@@ -178,6 +181,7 @@ export class RaceEngine {
   private loadMs = 0;
   private bumpClock = 0;
   private spinCamYaw = 0;
+  private rejectClock = 0;
   private audio = new GameAudio();
   private opts: RaceOptions;
   private karts: Kart[] = [];
@@ -368,6 +372,8 @@ export class RaceEngine {
       immune: 0,
       rescue: 0,
       wrongClock: 0,
+      sector: 0,
+      sectorSteps: 0,
       rescues: 0,
       driftHeld: false,
       driftHold: 0,
@@ -685,8 +691,20 @@ export class RaceEngine {
     if (!k.finished) {
       const forward = Math.sin(k.angle) * Math.sin(near.index >= 0 ? this.track.points[near.index].angle : 0) +
         -Math.cos(k.angle) * -Math.cos(this.track.points[near.index].angle);
+      // Sectores: un salto de hasta un sector se tolera (recortes pequeños); más allá no suma.
+      const sector = Math.min(SECTORS - 1, Math.floor((near.index / total) * SECTORS));
+      const step = (sector - k.sector + SECTORS) % SECTORS;
+      if (step === 1 || step === 2) {
+        k.sector = sector;
+        k.sectorSteps += step;
+      }
       if (k.prevIdx > total * 0.7 && near.index < total * 0.3 && forward > 0 && this.raceTime - k.lapStart > 8) {
-        this.crossLine(k);
+        if (k.sectorSteps >= SECTORS) {
+          k.sectorSteps = 0;
+          this.crossLine(k);
+        } else if (k.isPlayer) {
+          this.rejectClock = 2.4;
+        }
       }
       k.prevIdx = near.index;
       k.idx = near.index;
@@ -794,6 +812,7 @@ export class RaceEngine {
     }
 
     this.bumpClock = Math.max(0, this.bumpClock - dt);
+    this.rejectClock = Math.max(0, this.rejectClock - dt);
     this.handleKartCollisions();
     this.updatePickups(dt);
     this.updateProjectiles(dt);
@@ -842,12 +861,15 @@ export class RaceEngine {
       DIFFICULTY_BY_ID[this.opts.difficulty].aiBase * k.pilot.spec.topSpeed * rubber;
     k.aiScale = clamp(targetSpeed / WORLD.MAX_SPEED, 0.52, 1.12);
 
-    // Frena si la curva siguiente es muy cerrada.
-    const here = this.track.points[k.idx];
-    const upcoming = this.track.points[(k.idx + 22) % total];
-    const curvature = Math.abs(angleDelta(here.angle, upcoming.angle));
-    const brake = curvature > 0.62 && k.speed > 105 ? 0.35 : 0;
-    const throttle = curvature > 1.05 && k.speed > 125 ? 0.2 : 1;
+    // Velocidad segura según la curvatura (el perfil ya incluye la frenada anticipada).
+    const safe = this.track.speedProfile[(k.idx + 8) % total] * DIFFICULTY_BY_ID[this.opts.difficulty].cornering;
+    const desired = Math.min(targetSpeed * 1.08, safe);
+    let brake = 0;
+    let throttle = 1;
+    if (k.speed > desired + 3) {
+      brake = clamp((k.speed - desired) / 30, 0, 0.75);
+      throttle = 0;
+    }
     const drift = Math.abs(diff) > 0.32 && k.speed > 82;
 
     // Uso de objetos de la IA: sencillo y legible.
@@ -1295,6 +1317,7 @@ export class RaceEngine {
       boost: this.player.boost,
       surface: surfaceAt(this.world, this.player.x, this.player.y),
       wrongWay: this.player.wrongClock > 1.4,
+      lapRejected: this.rejectClock > 0,
       tier: this.tier,
       standings,
       minimap,

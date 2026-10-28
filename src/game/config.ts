@@ -47,6 +47,9 @@ export const PICKUP_WIDTH = {
   bowl: 4,
 } as const;
 
+/** Sectores en que se divide el bucle para validar vueltas (evita atajos grandes). */
+export const SECTORS = 8;
+
 /** Cámara de persecución. */
 export const CAMERA = {
   /** Distancia detrás del jugador. */

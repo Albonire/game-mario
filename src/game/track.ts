@@ -140,7 +140,7 @@ function layoutPoints(layout: LayoutSpec): Vec[] {
 }
 
 /** Radio local de curvatura con una ventana de +-8 puntos (infinito en recta). */
-function localRadii(points: Vec[]): number[] {
+export function localRadii(points: Vec[]): number[] {
   const n = points.length;
   const heading = points.map((_, i) => {
     const a = points[(i - 1 + n) % n];
@@ -213,6 +213,34 @@ function computeStats(points: Vec[], length: number): TrackStats {
     minRadius: Number.isFinite(minRadius) ? minRadius : 9999,
     longestStraight: longestStraightCenter(radii).length,
   };
+}
+
+/**
+ * Velocidad máxima con la que un kart puede seguir cada punto del eje.
+ * El giro útil cae con la velocidad (WORLD.TURN x (1 - 0,42 v / 150)) y el derrape suma un 34 %,
+ * de donde sale el radio mínimo que se recorre a cada velocidad. Luego una pasada hacia atrás
+ * limita la velocidad con la frenada disponible para llegar a cada curva con tiempo.
+ */
+function buildSpeedProfile(points: Vec[]): Float32Array {
+  const n = points.length;
+  const radii = localRadii(points);
+  const safe = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const r = Math.min(radii[i], 4000);
+    safe[i] = Math.min(WORLD.MAX_SPEED * 1.3, (3.08 * r) / (1 + 0.0086 * r));
+  }
+  const decel = 105;
+  const step = TRACK_STEP;
+  // Dos vueltas para que el cierre del bucle converja.
+  for (let pass = 0; pass < 2; pass++) {
+    for (let k = n * 2 - 1; k >= 0; k--) {
+      const i = k % n;
+      const next = safe[(i + 1) % n];
+      const limit = Math.sqrt(next * next + 2 * decel * step);
+      if (limit < safe[i]) safe[i] = limit;
+    }
+  }
+  return safe;
 }
 
 export function nearestPoint(points: TrackPoint[], x: number, y: number) {
@@ -296,6 +324,7 @@ export function buildTrackGeometry(def: TrackDef): TrackData {
     boostPads,
     svgPath,
     minimapPoints,
+    speedProfile: buildSpeedProfile(points),
     minimap: { scale, ox, oy },
     stats: computeStats(points, length),
   };
