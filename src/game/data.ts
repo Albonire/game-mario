@@ -79,10 +79,12 @@ export const DIFFICULTIES: Array<{
   description: string;
   aiBase: number;
   rubber: number;
+  /** Fracción de la velocidad segura en curva que la IA se atreve a usar. */
+  cornering: number;
 }> = [
-  { id: 'paseo', label: 'Paseo', description: 'Rivales relajados. Ideal para descubrir la isla.', aiBase: 118, rubber: 0.68 },
-  { id: 'piloto', label: 'Piloto', description: 'Duelo equilibrado. La experiencia recomendada.', aiBase: 134, rubber: 1 },
-  { id: 'leyenda', label: 'Leyenda', description: 'Ritmo de podio. Cada error se paga caro.', aiBase: 144, rubber: 1.25 },
+  { id: 'paseo', label: 'Paseo', description: 'Rivales relajados. Ideal para descubrir la isla.', aiBase: 118, rubber: 0.68, cornering: 0.86 },
+  { id: 'piloto', label: 'Piloto', description: 'Duelo equilibrado. La experiencia recomendada.', aiBase: 134, rubber: 1, cornering: 0.95 },
+  { id: 'leyenda', label: 'Leyenda', description: 'Ritmo de podio. Cada error se paga caro.', aiBase: 144, rubber: 1.25, cornering: 1.02 },
 ];
 
 export const DIFFICULTY_BY_ID = Object.fromEntries(DIFFICULTIES.map((d) => [d.id, d])) as Record<

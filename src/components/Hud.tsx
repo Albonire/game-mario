@@ -54,7 +54,7 @@ function LapPanel({ snapshot }: { snapshot: RaceSnapshot }) {
           {formatTime(snapshot.totalTime)}
         </p>
         <p className="mt-0.5 hidden font-mono text-[8px] uppercase tracking-wider text-white/40 sm:block sm:text-[9px]">
-          Mejor vuelta <span className="text-white/70">{snapshot.bestLap ? formatTime(snapshot.bestLap) : '—:—'}</span>
+          Mejor vuelta <span className="text-white/70">{snapshot.bestLap ? formatTime(snapshot.bestLap) : '--:--.--'}</span>
         </p>
       </div>
     </Panel>

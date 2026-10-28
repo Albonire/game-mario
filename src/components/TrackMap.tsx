@@ -1,44 +1,60 @@
 import { useMemo } from 'react';
-import { TRACK } from '../game/trackCache';
-import { ISLAND, islandBoundary, worldToMinimap } from '../game/track';
-import type { MiniDot } from '../game/types';
+import { TRACK_BY_ID, DEFAULT_TRACK } from '../game/tracks';
+import { getTrack, worldToMinimap } from '../game/track';
+import type { MiniDot, TrackId } from '../game/types';
 
 interface Props {
+  trackId?: TrackId;
   dots?: MiniDot[];
   className?: string;
   accent?: string;
   variant?: 'hero' | 'minimap';
 }
 
-export function TrackMap({ dots = [], className = '', accent = '#d9f45a', variant = 'hero' }: Props) {
-  const island = useMemo(() => {
-    const pts: string[] = [];
-    for (let i = 0; i < 110; i++) {
-      const a = (i / 110) * Math.PI * 2;
-      const r = islandBoundary(a) + 35;
-      const p = worldToMinimap(TRACK, ISLAND.cx + Math.cos(a) * r, ISLAND.cy + Math.sin(a) * r * ISLAND.sy);
-      pts.push(`${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)} ${p.y.toFixed(2)}`);
-    }
-    return pts.join(' ') + ' Z';
-  }, []);
+/** Contorno de la isla en coordenadas del minimapa, o null si la pista no tiene isla de contorno polar. */
+function islandOutline(trackId: TrackId): string | null {
+  const def = TRACK_BY_ID[trackId];
+  if (def.terrain.kind !== 'island') return null;
+  const track = getTrack(trackId);
+  const t = def.terrain;
+  const pts: string[] = [];
+  for (let i = 0; i < 110; i++) {
+    const a = (i / 110) * Math.PI * 2;
+    let r = t.base + 35;
+    for (const [amp, k, phase] of t.harmonics) r += amp * Math.sin(k * (a > Math.PI ? a - Math.PI * 2 : a) + phase);
+    const p = worldToMinimap(track, t.cx + Math.cos(a) * r, t.cy + Math.sin(a) * r * t.sy);
+    pts.push(`${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)} ${p.y.toFixed(2)}`);
+  }
+  return pts.join(' ') + ' Z';
+}
 
-  const start = useMemo(() => worldToMinimap(TRACK, TRACK.start.x, TRACK.start.y), []);
-  const lighthouse = useMemo(() => worldToMinimap(TRACK, TRACK.lighthouse.x, TRACK.lighthouse.y), []);
+export function TrackMap({ trackId = DEFAULT_TRACK, dots = [], className = '', accent = '#d9f45a', variant = 'hero' }: Props) {
+  const track = useMemo(() => getTrack(trackId), [trackId]);
+  const def = TRACK_BY_ID[trackId];
+  const island = useMemo(() => islandOutline(trackId), [trackId]);
+  const start = useMemo(() => worldToMinimap(track, track.start.x, track.start.y), [track]);
+  const lighthouse = useMemo(() => {
+    const lm = def.landmarks.find((l) => l.type === 'lighthouse');
+    return lm ? worldToMinimap(track, lm.x, lm.y) : null;
+  }, [track, def]);
   const isMini = variant === 'minimap';
+  const uid = `${trackId}-${variant}`;
+  // Tierra de las pistas sin isla: una cinta ancha alrededor del trazado.
+  const ribbonWidth = def.terrain.kind === 'ribbon' ? def.terrain.radius * 2 * track.minimap.scale : 0;
 
   return (
-    <svg viewBox="0 0 100 100" className={className} role="img" aria-label="Trazado del circuito Isla del Faro">
+    <svg viewBox="0 0 100 100" className={className} role="img" aria-label={`Trazado de ${def.name}`}>
       <defs>
-        <linearGradient id="island-fill" x1="20" y1="0" x2="80" y2="100">
+        <linearGradient id={`land-${uid}`} x1="20" y1="0" x2="80" y2="100">
           <stop offset="0" stopColor="#1b4639" />
           <stop offset="1" stopColor="#0d2b26" />
         </linearGradient>
-        <linearGradient id="track-stroke" x1="0" y1="0" x2="100" y2="100">
+        <linearGradient id={`stroke-${uid}`} x1="0" y1="0" x2="100" y2="100">
           <stop offset="0" stopColor={accent} />
           <stop offset="0.55" stopColor="#ffffff" />
           <stop offset="1" stopColor={accent} />
         </linearGradient>
-        <filter id="track-glow" x="-30%" y="-30%" width="160%" height="160%">
+        <filter id={`glow-${uid}`} x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation={isMini ? 0.7 : 1.4} result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
@@ -54,36 +70,46 @@ export function TrackMap({ dots = [], className = '', accent = '#d9f45a', varian
               <circle key={i} cx="50" cy="50" r={30 + i * 8} strokeDasharray="0.35 3.2" />
             ))}
           </g>
-          <path d={island} fill="url(#island-fill)" stroke="#5fbfa0" strokeOpacity="0.24" strokeWidth="0.5" />
-          <path d={island} fill="none" stroke="#d9f45a" strokeOpacity="0.13" strokeWidth="1.1" />
+          {island ? (
+            <>
+              <path d={island} fill={`url(#land-${uid})`} stroke="#5fbfa0" strokeOpacity="0.24" strokeWidth="0.5" />
+              <path d={island} fill="none" stroke={accent} strokeOpacity="0.13" strokeWidth="1.1" />
+            </>
+          ) : (
+            <path
+              d={track.svgPath}
+              fill={`url(#land-${uid})`}
+              stroke={`url(#land-${uid})`}
+              strokeWidth={ribbonWidth}
+              strokeLinejoin="round"
+              opacity="0.9"
+            />
+          )}
         </>
       )}
       {isMini && (
         <>
           <rect x="1" y="1" width="98" height="98" rx="14" fill="#0c211d" />
-          <path d={island} fill="#123129" opacity="0.8" />
+          {island ? (
+            <path d={island} fill="#123129" opacity="0.8" />
+          ) : (
+            <path d={track.svgPath} fill="#123129" stroke="#123129" strokeWidth={ribbonWidth} strokeLinejoin="round" opacity="0.8" />
+          )}
         </>
       )}
 
+      <path d={track.svgPath} fill="none" stroke="#061713" strokeWidth={isMini ? 5.2 : 6.2} strokeLinejoin="round" strokeLinecap="round" />
       <path
-        d={TRACK.svgPath}
+        d={track.svgPath}
         fill="none"
-        stroke="#061713"
-        strokeWidth={isMini ? 5.2 : 6.2}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      <path
-        d={TRACK.svgPath}
-        fill="none"
-        stroke="url(#track-stroke)"
+        stroke={`url(#stroke-${uid})`}
         strokeWidth={isMini ? 2.1 : 2.6}
         strokeLinejoin="round"
         strokeLinecap="round"
-        filter="url(#track-glow)"
+        filter={`url(#glow-${uid})`}
       />
       <path
-        d={TRACK.svgPath}
+        d={track.svgPath}
         fill="none"
         stroke="#061713"
         strokeWidth={isMini ? 0.55 : 0.7}
@@ -98,10 +124,12 @@ export function TrackMap({ dots = [], className = '', accent = '#d9f45a', varian
           {isMini ? '1' : 'IN'}
         </text>
       </g>
-      <g>
-        <circle cx={lighthouse.x} cy={lighthouse.y} r={isMini ? 2 : 2.6} fill={accent} />
-        <circle cx={lighthouse.x} cy={lighthouse.y} r={isMini ? 3.2 : 5} fill="none" stroke={accent} strokeOpacity="0.35" strokeWidth="0.7" />
-      </g>
+      {lighthouse && (
+        <g>
+          <circle cx={lighthouse.x} cy={lighthouse.y} r={isMini ? 2 : 2.6} fill={accent} />
+          <circle cx={lighthouse.x} cy={lighthouse.y} r={isMini ? 3.2 : 5} fill="none" stroke={accent} strokeOpacity="0.35" strokeWidth="0.7" />
+        </g>
+      )}
 
       {dots.map((dot) => (
         <g key={dot.id}>

@@ -1,3 +1,5 @@
+import type { Soundscape } from './themes';
+
 /**
  * Motor de audio 100 % sintetizado con Web Audio.
  * Sin archivos externos: motor, derrape, cuenta atrás y avisos se generan en vivo.
@@ -10,6 +12,7 @@ export class GameAudio {
   private engineB: OscillatorNode | null = null;
   private engineFilter: BiquadFilterNode | null = null;
   private driftGain: GainNode | null = null;
+  private ambient: { nodes: AudioScheduledSourceNode[]; gain: GainNode; kind: Soundscape } | null = null;
   private muted = false;
 
   get isMuted() {
@@ -92,6 +95,102 @@ export class GameAudio {
     if (!this.ctx || !this.driftGain) return;
     const loud = surface === 'grass' ? 0.03 : surface === 'sand' ? 0.045 : 0.075;
     this.driftGain.gain.setTargetAtTime(active ? loud : 0, this.ctx.currentTime, 0.045);
+  }
+
+  /** Ruido marrón de unos segundos en bucle: base de olas, viento y tráfico lejano. */
+  private brownNoise(seconds = 4) {
+    const ctx = this.ctx!;
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < data.length; i++) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+      data[i] = last * 3.5;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    return src;
+  }
+
+  /** Oscilador lento que mueve el volumen de una capa (oleaje, ráfagas). */
+  private swell(target: AudioParam, rate: number, depth: number, nodes: AudioScheduledSourceNode[]) {
+    const ctx = this.ctx!;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = rate;
+    const amount = ctx.createGain();
+    amount.gain.value = depth;
+    lfo.connect(amount).connect(target);
+    lfo.start();
+    nodes.push(lfo);
+  }
+
+  /** Sonido de fondo de la pista: olas, viento seco, viento de montaña o ciudad. */
+  startAmbient(kind: Soundscape) {
+    if (!this.ctx || !this.master || this.ambient?.kind === kind) return;
+    this.stopAmbient();
+    const ctx = this.ctx;
+    const nodes: AudioScheduledSourceNode[] = [];
+    const out = ctx.createGain();
+    out.gain.value = 0;
+    out.connect(this.master);
+    const layer = (filter: BiquadFilterType, freq: number, q: number, level: number, rate: number, depth: number) => {
+      const src = this.brownNoise();
+      const f = ctx.createBiquadFilter();
+      f.type = filter;
+      f.frequency.value = freq;
+      f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      src.connect(f).connect(g).connect(out);
+      src.start();
+      nodes.push(src);
+      if (depth > 0) this.swell(g.gain, rate, depth, nodes);
+    };
+    let level = 0.2;
+    if (kind === 'sea') {
+      layer('lowpass', 520, 0.7, 0.55, 0.12, 0.35);
+      layer('highpass', 3400, 0.5, 0.06, 0.12, 0.05);
+      level = 0.24;
+    } else if (kind === 'desert') {
+      layer('bandpass', 360, 0.6, 0.5, 0.05, 0.3);
+      layer('bandpass', 1100, 2.2, 0.06, 0.07, 0.05);
+      level = 0.14;
+    } else if (kind === 'mountain') {
+      layer('bandpass', 640, 1.6, 0.5, 0.08, 0.3);
+      layer('bandpass', 1500, 3, 0.06, 0.11, 0.05);
+      level = 0.17;
+    } else {
+      layer('lowpass', 230, 0.8, 0.7, 0.03, 0.15);
+      for (const f of [55, 110]) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        const g = ctx.createGain();
+        g.gain.value = f === 55 ? 0.05 : 0.018;
+        osc.connect(g).connect(out);
+        osc.start();
+        nodes.push(osc);
+      }
+      level = 0.22;
+    }
+    out.gain.setTargetAtTime(level, ctx.currentTime, 0.8);
+    this.ambient = { nodes, gain: out, kind };
+  }
+
+  stopAmbient() {
+    if (!this.ambient || !this.ctx) return;
+    const { nodes, gain } = this.ambient;
+    gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.1);
+    const stopAt = this.ctx.currentTime + 0.6;
+    for (const n of nodes) {
+      try {
+        n.stop(stopAt);
+      } catch {
+        /* ya detenido */
+      }
+    }
+    this.ambient = null;
   }
 
   stopEngine() {
@@ -207,6 +306,7 @@ export class GameAudio {
 
   dispose() {
     this.stopEngine();
+    this.stopAmbient();
     if (this.ctx) {
       void this.ctx.close();
       this.ctx = null;
