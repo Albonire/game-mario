@@ -1,0 +1,31 @@
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('http://127.0.0.1:4173/?demo=1', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: /Jugar ahora/i }).first().click();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: '/tmp/pre-final.png' });
+  const preScroll = await page.evaluate(() => {
+    const sc = document.querySelector('.relative.h-\\[100dvh\\].overflow-y-auto');
+    return { scrollHeight: sc ? sc.scrollHeight : 0, clientHeight: sc ? sc.clientHeight : 0 };
+  });
+  console.log('PRE', JSON.stringify(preScroll));
+  await page.getByRole('button', { name: /Entrar a la parrilla/i }).click();
+  await page.waitForTimeout(2000);
+  await page.screenshot({ path: '/tmp/start-final.png' });
+  await page.waitForTimeout(40000);
+  await page.screenshot({ path: '/tmp/lap2-final.png' });
+  const text = await page.locator('.race-root').innerText();
+  const toasts = await page.locator('.achievement-toast').count();
+  console.log('TOASTS', toasts, 'TEXT', text.replace(/\n/g, '|').slice(0, 400));
+  await page.waitForTimeout(55000);
+  await page.screenshot({ path: '/tmp/finish-final.png' });
+  console.log('RESULT', (await page.locator('.race-root').innerText()).includes('CLASIFICACIÓN FINAL'));
+  console.log('ERRORS', errors.length ? errors.join('\n') : 'none');
+  await browser.close();
+})().catch(e => { console.error(e); process.exit(1); });

@@ -1,0 +1,515 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "Space Grotesk", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  --color-ink: #06120f;
+  --color-ink-2: #071713;
+  --color-cream: #f6f1e4;
+  --color-lime: #d9f45a;
+  --color-mint: #65e2d1;
+  --color-ember: #ff8a3d;
+}
+
+:root {
+  color-scheme: dark;
+  --lime: #d9f45a;
+  --cream: #f6f1e4;
+  --ink: #06120f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--ink);
+  color: var(--cream);
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+body,
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font-family: inherit;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+::selection {
+  background: var(--lime);
+  color: var(--ink);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #04110e;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e4036;
+  border-radius: 99px;
+  border: 2px solid #04110e;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2e5b4c;
+}
+
+:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 3px;
+}
+
+/* ---------- Tipografía de apoyo ---------- */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(217, 244, 90, 0.8);
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(6, 18, 15, 0.44);
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(246, 241, 228, 0.7);
+  backdrop-filter: blur(10px);
+}
+
+/* ---------- Botones de la web ---------- */
+.btn-hero {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  border-radius: 999px;
+  background: var(--lime);
+  padding: 0.55rem 1.25rem 0.55rem 0.55rem;
+  color: #071512;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: transform 220ms ease, box-shadow 220ms ease, background 220ms ease;
+  box-shadow: 0 18px 40px -22px rgba(217, 244, 90, 0.7);
+}
+.btn-hero:hover {
+  transform: translateY(-2px);
+  background: #e5fb81;
+  box-shadow: 0 24px 50px -24px rgba(217, 244, 90, 0.8);
+}
+.btn-hero:active {
+  transform: translateY(0);
+}
+.btn-hero-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(6, 18, 15, 0.3);
+  padding: 0.75rem 1.1rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: rgba(246, 241, 228, 0.75);
+  backdrop-filter: blur(10px);
+  transition: border-color 200ms, color 200ms, background 200ms;
+}
+.btn-hero-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #fff;
+  background: rgba(6, 18, 15, 0.55);
+}
+.cta-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  background: var(--lime);
+  padding: 0.55rem 0.9rem;
+  color: #071512;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  transition: transform 200ms, background 200ms, box-shadow 200ms;
+}
+.cta-small:hover {
+  background: #e8fc8d;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 30px -18px rgba(217, 244, 90, 0.9);
+}
+.nav-icon-btn {
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  color: rgba(246, 241, 228, 0.65);
+  display: inline-flex;
+  transition: color 200ms, border-color 200ms, background 200ms;
+}
+.nav-icon-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+}
+.pref-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  min-width: 34px;
+  padding: 0 0.55rem;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(246, 241, 228, 0.65);
+  transition: border-color 200ms, color 200ms, background 200ms;
+}
+.pref-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.07);
+}
+.mini-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.28rem 0.55rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(246, 241, 228, 0.42);
+}
+
+/* ---------- Cabecera / fondos ---------- */
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(217, 244, 90, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(217, 244, 90, 0.5) 1px, transparent 1px);
+  background-size: 92px 92px;
+  mask-image: radial-gradient(ellipse at 25% 60%, black, transparent 72%);
+}
+.grid-lines {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.35) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(ellipse at center, black, transparent 82%);
+}
+.noise {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+}
+.grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+/* ---------- Marquee ---------- */
+.marquee-band {
+  position: relative;
+  overflow: hidden;
+  background: var(--lime);
+  border-top: 1px solid rgba(7, 21, 18, 0.25);
+  border-bottom: 1px solid rgba(7, 21, 18, 0.25);
+  padding: 0.58rem 0;
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 38s linear infinite;
+}
+.marquee-band:hover .marquee-track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---------- Reveal on scroll ---------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- Juego · controles táctiles ---------- */
+.touch-demo-btn {
+  display: flex;
+  height: 46px;
+  width: 46px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(246, 241, 228, 0.75);
+}
+.touch-demo-btn small {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 6px;
+  letter-spacing: 0.08em;
+  opacity: 0.65;
+}
+
+/* ---------- Juego · HUD ---------- */
+.hud-panel {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.hud-icon-btn {
+  display: flex;
+  height: 19px;
+  width: 19px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(246, 241, 228, 0.5);
+  transition: color 150ms, border-color 150ms, background 150ms;
+}
+.hud-icon-btn:hover {
+  color: #fff;
+  border-color: rgba(217, 244, 90, 0.45);
+  background: rgba(217, 244, 90, 0.1);
+}
+@media (max-width: 639px) {
+  .hud-icon-btn {
+    height: 17px;
+    width: 17px;
+  }
+}
+.item-glow {
+  animation: item-pulse 1.8s ease-in-out infinite;
+}
+@keyframes item-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(217, 244, 90, 0);
+  }
+  50% {
+    box-shadow: 0 0 14px 0 rgba(217, 244, 90, 0.22);
+  }
+}
+.countdown-number {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: clamp(54px, 10vw, 108px);
+  font-weight: 900;
+  line-height: 0.85;
+  letter-spacing: -0.06em;
+  color: #f6f1e4;
+  text-shadow: 0 8px 40px rgba(0, 0, 0, 0.55), 0 0 26px rgba(217, 244, 90, 0.25);
+  animation: countdown-pop 500ms cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+@keyframes countdown-pop {
+  0% {
+    opacity: 0;
+    transform: scale(1.45);
+    filter: blur(3px);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.touch-btn {
+  touch-action: none;
+  transition: transform 90ms, background-color 90ms, border-color 90ms;
+}
+.achievement-toast {
+  animation: toast-in 480ms cubic-bezier(0.2, 1.25, 0.4, 1) both;
+}
+@keyframes toast-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ---------- Juego · menús ---------- */
+.btn-race {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-radius: 12px;
+  background: var(--lime);
+  padding: 0.62rem 0.65rem;
+  color: #071512;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: background 180ms, transform 180ms, box-shadow 180ms;
+  box-shadow: 0 16px 34px -22px rgba(217, 244, 90, 0.85);
+}
+.btn-race:hover {
+  background: #e6fb85;
+  transform: translateY(-1px);
+  box-shadow: 0 20px 40px -22px rgba(217, 244, 90, 0.9);
+}
+.menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.62rem 0.8rem;
+  font-size: 0.75rem;
+  color: rgba(246, 241, 228, 0.65);
+  transition: border-color 180ms, color 180ms, background 180ms;
+}
+.menu-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.07);
+}
+.menu-btn-primary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 12px;
+  background: var(--lime);
+  padding: 0.75rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #071512;
+  transition: background 180ms, transform 180ms;
+}
+.menu-btn-primary:hover {
+  background: #e6fb85;
+}
+.result-stat {
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.65rem 0.7rem;
+}
+.result-stat p {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(246, 241, 228, 0.3);
+}
+.result-stat strong {
+  display: block;
+  margin-top: 0.25rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(246, 241, 228, 0.9);
+}
+
+/* ---------- Responsive del juego ---------- */
+.race-stage canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  .race-stage {
+    align-items: center !important;
+    padding-top: 0;
+  }
+  .race-bg {
+    display: block;
+  }
+  .portrait-mobile-block {
+    display: flex;
+  }
+}
+
+/* Portátiles con poca altura: el panel de resumen se compacta para que
+   el botón de salida quede siempre a la vista sin desplazamiento. */
+@media (max-height: 820px) and (min-width: 1024px) {
+  .pre-summary {
+    padding: 0.75rem 0.9rem;
+  }
+  .pre-summary .pre-map {
+    max-width: 154px;
+    margin-top: 0.35rem;
+  }
+  .pre-summary .pre-map > div > div {
+    display: none;
+  }
+  .pre-portrait {
+    width: 34%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .marquee-track {
+    animation: none;
+  }
+  .countdown-number,
+  .item-glow {
+    animation: none;
+  }
+}
