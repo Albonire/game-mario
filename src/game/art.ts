@@ -1,4 +1,4 @@
-import type { DecorationType, Pilot, PilotId } from './types';
+import type { DecorationType } from './types';
 
 function makeCanvas(w: number, h: number) {
   const c = document.createElement('canvas');
@@ -7,183 +7,11 @@ function makeCanvas(w: number, h: number) {
   return c;
 }
 
-function shade(hex: string, amount: number) {
-  const clean = hex.replace('#', '');
-  const num = parseInt(clean, 16);
-  const r = Math.max(0, Math.min(255, ((num >> 16) & 255) + amount));
-  const g = Math.max(0, Math.min(255, ((num >> 8) & 255) + amount));
-  const b = Math.max(0, Math.min(255, (num & 255) + amount));
-  return `rgb(${r},${g},${b})`;
-}
-
 function ellipse(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, fill: string) {
   ctx.fillStyle = fill;
   ctx.beginPath();
   ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
   ctx.fill();
-}
-
-export function makeKartSprite(pilot: Pilot): HTMLCanvasElement {
-  const c = makeCanvas(64, 42);
-  const ctx = c.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-  const color = pilot.color;
-
-  // Neumáticos traseros.
-  ctx.fillStyle = '#111819';
-  ctx.beginPath();
-  ctx.roundRect(3, 22, 14, 15, 3);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.roundRect(47, 22, 14, 15, 3);
-  ctx.fill();
-  ctx.fillStyle = '#39464a';
-  ctx.fillRect(5, 25, 10, 3);
-  ctx.fillRect(49, 25, 10, 3);
-  ctx.fillStyle = '#5a6a6b';
-  ctx.fillRect(7, 33, 6, 2);
-  ctx.fillRect(51, 33, 6, 2);
-
-  // Eje y chasis.
-  ctx.fillStyle = '#20292c';
-  ctx.fillRect(12, 27, 40, 5);
-  ctx.fillStyle = shade(color, -42);
-  ctx.beginPath();
-  ctx.moveTo(14, 20);
-  ctx.lineTo(50, 20);
-  ctx.lineTo(53, 31);
-  ctx.lineTo(11, 31);
-  ctx.closePath();
-  ctx.fill();
-  ellipse(ctx, 32, 17, 18, 7, shade(color, 18));
-  ellipse(ctx, 32, 16, 13, 5, color);
-
-  // Difusor trasero y escape.
-  ctx.fillStyle = '#151e20';
-  ctx.fillRect(18, 31, 28, 4);
-  ctx.fillStyle = '#8c9998';
-  ctx.fillRect(11, 30, 5, 3);
-  ctx.fillRect(48, 30, 5, 3);
-  ctx.fillStyle = '#11181a';
-  ctx.fillRect(27, 30, 10, 5);
-
-  // Alerón.
-  ctx.fillStyle = '#1a2426';
-  ctx.fillRect(16, 15, 4, 8);
-  ctx.fillRect(44, 15, 4, 8);
-  ctx.fillStyle = shade(color, -12);
-  ctx.beginPath();
-  ctx.roundRect(9, 11, 46, 6, 2);
-  ctx.fill();
-  ctx.fillStyle = shade(color, 40);
-  ctx.fillRect(11, 12, 42, 2);
-
-  // Asiento y piloto.
-  ctx.fillStyle = '#1b2528';
-  ctx.beginPath();
-  ctx.roundRect(22, 12, 20, 11, 3);
-  ctx.fill();
-  ctx.fillStyle = shade(color, -55);
-  ctx.beginPath();
-  ctx.roundRect(21, 8, 22, 9, 4);
-  ctx.fill();
-  ctx.fillStyle = color;
-  ctx.fillRect(23, 8, 18, 3);
-  ctx.fillStyle = '#f1eee2';
-  ctx.fillRect(28, 19, 8, 2);
-
-  // Casco y rasgos del animal.
-  const helmet = color;
-  ellipse(ctx, 32, 5, 9, 8, '#172125');
-  ellipse(ctx, 32, 4, 8, 6.5, helmet);
-  ctx.fillStyle = shade(color, 55);
-  ctx.fillRect(25, 1, 14, 2);
-  ctx.fillStyle = '#101b1e';
-  ctx.fillRect(25, 4, 3, 4);
-  ctx.fillRect(36, 4, 3, 4);
-
-  switch (pilot.id) {
-    case 'pingui': {
-      ctx.fillStyle = '#f7f2df';
-      ctx.fillRect(31, 7, 7, 6);
-      ctx.fillStyle = '#ffb71b';
-      ctx.beginPath();
-      ctx.moveTo(37, 8);
-      ctx.lineTo(43, 10);
-      ctx.lineTo(37, 12);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = '#152023';
-      ctx.fillRect(24, 8, 2, 5);
-      break;
-    }
-    case 'nu': {
-      ctx.fillStyle = '#5b6970';
-      ctx.fillRect(30, 7, 8, 6);
-      ctx.strokeStyle = '#d9c8a2';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(23, 3, 7, Math.PI * 0.2, Math.PI * 1.3);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(41, 3, 7, -Math.PI * 0.3, Math.PI * 0.8);
-      ctx.stroke();
-      ctx.fillStyle = '#2d3638';
-      ctx.fillRect(30, 11, 8, 3);
-      break;
-    }
-    case 'draco': {
-      ctx.fillStyle = '#68cfa6';
-      ctx.fillRect(30, 7, 9, 6);
-      ctx.fillStyle = '#b7f3d6';
-      ctx.beginPath();
-      ctx.moveTo(38, 8);
-      ctx.lineTo(44, 11);
-      ctx.lineTo(38, 12);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = '#f2b94b';
-      ctx.beginPath();
-      ctx.moveTo(25, 0);
-      ctx.lineTo(27, 4);
-      ctx.lineTo(22, 4);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(40, 0);
-      ctx.lineTo(42, 4);
-      ctx.lineTo(37, 4);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-    case 'pio': {
-      ctx.fillStyle = '#8c7bab';
-      ctx.fillRect(30, 7, 8, 6);
-      ctx.fillStyle = '#e8c9a0';
-      ctx.beginPath();
-      ctx.moveTo(37, 9);
-      ctx.lineTo(44, 11);
-      ctx.lineTo(37, 12);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = '#c6b2e5';
-      ctx.fillRect(22, 1, 3, 4);
-      ctx.fillRect(26, 0, 3, 3);
-      ctx.fillStyle = '#101b1e';
-      ctx.fillRect(28, 5, 3, 3);
-      break;
-    }
-  }
-
-  // Pequeño dorsal.
-  ctx.fillStyle = 'rgba(10, 16, 18, .45)';
-  ctx.fillRect(26, 26, 12, 4);
-  ctx.fillStyle = '#f7f1dc';
-  ctx.font = 'bold 5px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(pilot.number, 32, 30);
-  return c;
 }
 
 function palm(): HTMLCanvasElement {
@@ -565,13 +393,6 @@ export function getSprite(type: Exclude<DecorationType, 'palm'> | 'palm'): HTMLC
   }
   cache.set(key, sprite);
   return sprite;
-}
-
-const kartCache = new Map<PilotId, HTMLCanvasElement>();
-
-export function kartSprite(pilot: Pilot) {
-  if (!kartCache.has(pilot.id)) kartCache.set(pilot.id, makeKartSprite(pilot));
-  return kartCache.get(pilot.id)!;
 }
 
 const propCache = new Map<string, HTMLCanvasElement>();

@@ -1,8 +1,9 @@
-import { getSprite, kartSprite, propSprite } from './art';
+import { getSprite, propSprite } from './art';
 import { KART, PICKUP, PICKUP_WIDTH, PROP_WIDTH } from './config';
 import { BOX_WEIGHTS, DIFFICULTY_BY_ID, PILOTS, PILOT_BY_ID } from './data';
 import { GameAudio } from './audio';
 import { Mode7Renderer, drawWorldSprite, project } from './render';
+import { KartSprites, lodIndexFor, pitchIndexFor, poseKeyFor } from './sprites/atlas';
 import { SURFACE_FOLLOW, SURFACE_GRIP, isVoid } from './terrain/materials';
 import { loadWorld, matAt, surfaceAt, type BuildProgress, type WorldData } from './terrain/world';
 import { WORLD, angleDelta, clamp, formatTime, nearestPoint, worldToMinimap } from './track';
@@ -168,6 +169,7 @@ export class RaceEngine {
   private track!: TrackData;
   private def!: TrackDef;
   private renderer!: Mode7Renderer;
+  private sprites!: KartSprites;
   private overlay!: HTMLCanvasElement;
   private tier: QualityTier = 'alta';
   private autoQuality = true;
@@ -175,6 +177,7 @@ export class RaceEngine {
   private perf = { update: 0, render: 0 };
   private loadMs = 0;
   private bumpClock = 0;
+  private spinCamYaw = 0;
   private audio = new GameAudio();
   private opts: RaceOptions;
   private karts: Kart[] = [];
@@ -217,7 +220,6 @@ export class RaceEngine {
   private finishSent = false;
   private driftEmitClock = 0;
   private boostEmitClock = 0;
-  private currentSteer = 0;
 
   constructor(canvas: HTMLCanvasElement, opts: RaceOptions) {
     this.canvas = canvas;
@@ -243,9 +245,13 @@ export class RaceEngine {
     this.renderer = new Mode7Renderer(this.world);
     this.createWorld();
     this.createKarts();
+    this.warmUpSprites();
     this.audio.startEngine();
     this.attachEvents();
-    if (this.opts.debug) (window as unknown as { __tux?: unknown }).__tux = { state: () => this.debugState() };
+    if (this.opts.debug) (window as unknown as { __tux?: unknown }).__tux = {
+        state: () => this.debugState(),
+        spin: (index: number) => this.spinKart(this.karts[index]),
+      };
     this.lastFrame = performance.now();
     this.raf = requestAnimationFrame(this.loop);
   }
@@ -259,6 +265,7 @@ export class RaceEngine {
       raceTime: this.raceTime,
       tier: this.tier,
       fps: this.fps,
+      spritesPending: this.sprites.pending(),
       updateMs: this.perf.update,
       renderMs: this.perf.render,
       karts: this.karts.map((k) => ({
@@ -274,6 +281,29 @@ export class RaceEngine {
         finishTime: k.finishTime,
       })),
     };
+  }
+
+  /**
+   * Prepara los sprites de los karts: lo imprescindible para el primer fotograma se genera ya
+   * y el resto (otras alturas de cámara, tamaños y poses) entra por tandas durante la carrera.
+   */
+  private warmUpSprites() {
+    this.sprites = new KartSprites();
+    const nearLod = lodIndexFor(VIEW.FOCAL / WORLD.CAM_DIST);
+    const farLod = lodIndexFor(VIEW.FOCAL / 90);
+    this.sprites.request(this.player.pilot, 'N', 0, nearLod, true);
+    for (const k of this.karts) if (!k.isPlayer) this.sprites.request(k.pilot, 'N', 1, farLod, true);
+    this.sprites.flush();
+    for (const pose of ['L', 'R'] as const) this.sprites.request(this.player.pilot, pose, 0, nearLod);
+    for (const k of this.karts) if (!k.isPlayer) this.sprites.request(k.pilot, 'N', 0, nearLod);
+    for (const pitch of [1, 2]) {
+      for (const k of this.karts) this.sprites.request(k.pilot, 'N', pitch, Math.max(farLod, 1));
+    }
+    for (const k of this.karts) {
+      for (const lod of [0, 1, 2]) {
+        for (const pitch of [0, 1, 2]) this.sprites.request(k.pilot, 'N', pitch, lod);
+      }
+    }
   }
 
   /** Cambia la resolución interna: redimensiona el lienzo y reconstruye lo que depende de ella. */
@@ -490,6 +520,7 @@ export class RaceEngine {
     this.lastFrame = time;
     const dt = clamp(raw, 0.001, 0.05);
     const t0 = performance.now();
+    this.sprites.pump(this.phase === 'racing' ? 2.5 : 6);
     if (!this.paused) {
       this.fps = this.fps * 0.93 + (1 / Math.max(0.001, raw)) * 0.07;
       const steps = this.opts.timeScale && this.opts.timeScale > 1 ? Math.round(this.opts.timeScale) : 1;
@@ -748,7 +779,6 @@ export class RaceEngine {
     this.goFlash = Math.max(0, this.goFlash - dt);
     this.raceTime += dt;
     const input = this.opts.demo ? this.aiInput(this.player, dt) : this.readInput();
-    this.currentSteer = input.steer;
     if (!this.opts.demo && input.item) this.usePlayerItem();
 
     for (const k of this.karts) {
@@ -970,6 +1000,7 @@ export class RaceEngine {
     k.driftHeld = false;
     k.driftHold = 0;
     if (k.isPlayer) {
+      this.spinCamYaw = this.camYaw;
       this.audio.spin();
       this.shake = Math.max(this.shake, 6);
     }
@@ -1106,7 +1137,8 @@ export class RaceEngine {
   }
 
   private updateCamera(dt: number) {
-    const targetYaw = this.player.angle;
+    // Durante un trompo la cámara se queda fija y es el kart el que gira.
+    const targetYaw = this.player.spin > 0 ? this.spinCamYaw : this.player.angle;
     this.camYaw += angleDelta(this.camYaw, targetYaw) * clamp(dt * 7.5, 0, 1);
     const tx = this.player.x - Math.sin(this.camYaw) * WORLD.CAM_DIST;
     const ty = this.player.y + Math.cos(this.camYaw) * WORLD.CAM_DIST;
@@ -1384,71 +1416,81 @@ export class RaceEngine {
     }
   }
 
-  /**
-   * Ancho con el que se dibuja el sprite heredado (64 px de lienzo, la carrocería ocupa ~91 %).
-   * Se ajusta para que el kart visible mida KART.WIDTH unidades.
-   */
-  private spriteWidth() {
-    return KART.WIDTH / 0.906;
+  /** Ángulo del kart respecto a la línea de visión de la cámara (0 = visto desde atrás). */
+  private relativeAngle(k: Kart, camera: { x: number; y: number }) {
+    return k.angle - Math.atan2(k.x - camera.x, -(k.y - camera.y));
+  }
+
+  /** Sombra elíptica sobre el suelo, orientada con el kart y con borde difuso. */
+  private drawShadow(
+    ctx: CanvasRenderingContext2D,
+    p: { x: number; y: number; scale: number; forward: number },
+    rel: number,
+    strength: number,
+  ) {
+    const squash = WORLD.CAM_H / p.forward;
+    ctx.save();
+    ctx.transform(p.scale, 0, 0, -p.scale * squash, p.x, p.y);
+    ctx.fillStyle = `rgba(8, 18, 18, ${0.15 * strength})`;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 3.9, 5.6, -rel, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(8, 18, 18, ${0.2 * strength})`;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 3, 4.5, -rel, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawKart(ctx: CanvasRenderingContext2D, k: Kart, camera: { x: number; y: number; yaw: number; shake: number }) {
     const p = project(camera, k.x, k.y);
-    if (!p.visible) return;
-    const sprite = kartSprite(k.pilot);
-    const w = this.spriteWidth() * p.scale;
-    const h = w * (sprite.height / sprite.width);
-    if (w < 1) return;
-    ctx.save();
-    ctx.fillStyle = 'rgba(11, 25, 24, .32)';
-    ctx.beginPath();
-    ctx.ellipse(p.x, p.y, w * 0.52, Math.max(1, h * 0.16), 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.translate(p.x, p.y - h / 2);
-    if (k.spin > 0) ctx.rotate(k.spinAngle);
-    ctx.drawImage(sprite, -w / 2, -h / 2, w, h);
-    ctx.restore();
+    if (!p.visible || p.scale < 0.3) return;
+    const pitchIdx = pitchIndexFor(p.forward);
+    const lodIdx = lodIndexFor(p.scale);
+    this.sprites.request(k.pilot, 'N', pitchIdx, lodIdx);
+    const atlas = this.sprites.best(k.pilot.id, 'N', pitchIdx, lodIdx);
+    const rel = this.relativeAngle(k, camera);
+    this.drawShadow(ctx, p, rel, 1);
+    if (atlas) KartSprites.draw(ctx, atlas, rel, p.x, p.y, p.scale);
   }
 
   private drawPlayer(ctx: CanvasRenderingContext2D, camera: { x: number; y: number; yaw: number; shake: number }) {
     const k = this.player;
     const p = project(camera, k.x, k.y);
     if (!p.visible) return;
-    const sprite = kartSprite(k.pilot);
-    const w = this.spriteWidth() * p.scale;
-    const h = w * (sprite.height / sprite.width);
-    const baseY = p.y + 1;
-    const bounce = Math.sin(this.raceTime * 21) * Math.min(0.8, k.speed / 200);
-    const lean = k.spin > 0 ? 0 : (k.driftHeld ? 0.2 : 0.1) * this.currentSteer;
-    const flameScale = w / 40;
-    ctx.save();
-    ctx.fillStyle = 'rgba(8, 20, 19, .36)';
-    ctx.beginPath();
-    ctx.ellipse(p.x, baseY, w * 0.53, Math.max(1, h * 0.16), 0, 0, Math.PI * 2);
-    ctx.fill();
+    const pitchIdx = pitchIndexFor(p.forward);
+    const lodIdx = lodIndexFor(p.scale);
+    const pose = k.spin > 0 ? 'N' : poseKeyFor(k.steerSmooth);
+    const atlas = this.sprites.best(k.pilot.id, pose, pitchIdx, lodIdx);
+    const rel = this.relativeAngle(k, camera);
+    const bounce = Math.sin(this.raceTime * 21) * Math.min(0.8, k.speed / 200) * (p.scale / 8);
+    this.drawShadow(ctx, p, rel, 1.1);
 
+    // Llamas por los dos escapes (salen hacia atrás, es decir, hacia la cámara).
     if (k.boost > 0 || k.nitro > 0.2) {
       const flame = k.boost > 0 ? '#ffb23e' : '#6ee7ff';
-      const length = (7 + Math.sin(this.raceTime * 40) * 3 + (k.boost > 0 ? 8 : 0)) * flameScale;
+      const length = (1.2 + Math.sin(this.raceTime * 40) * 0.4 + (k.boost > 0 ? 1.7 : 0)) * p.scale;
       for (const side of [-1, 1]) {
+        const fx = p.x + side * 0.9 * p.scale;
+        const fy = p.y + 0.5 * p.scale;
         ctx.fillStyle = flame;
         ctx.beginPath();
-        ctx.moveTo(p.x + side * 6 * flameScale, baseY - 2 * flameScale);
-        ctx.lineTo(p.x + side * 4 * flameScale, baseY + length);
-        ctx.lineTo(p.x + side * 9 * flameScale, baseY - 1 * flameScale);
+        ctx.moveTo(fx - 0.45 * p.scale, fy);
+        ctx.lineTo(fx + side * 0.15 * p.scale, fy + length);
+        ctx.lineTo(fx + 0.45 * p.scale, fy);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = 'rgba(255, 252, 205, .8)';
+        ctx.fillStyle = 'rgba(255, 252, 205, .85)';
         ctx.beginPath();
-        ctx.arc(p.x + side * 6 * flameScale, baseY + 1 * flameScale, 1.6 * flameScale, 0, Math.PI * 2);
+        ctx.arc(fx, fy + 0.15 * p.scale, 0.38 * p.scale, 0, Math.PI * 2);
         ctx.fill();
       }
     }
 
-    ctx.translate(p.x, baseY - h / 2 + bounce);
-    if (k.spin > 0) ctx.rotate(k.spinAngle);
-    else ctx.rotate(lean);
-    ctx.drawImage(sprite, -w / 2, -h / 2, w, h);
+    if (!atlas) return;
+    ctx.save();
+    ctx.translate(p.x, p.y + bounce);
+    KartSprites.draw(ctx, atlas, rel, 0, 0, p.scale);
     ctx.restore();
   }
 
