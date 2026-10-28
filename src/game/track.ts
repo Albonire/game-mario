@@ -1,4 +1,5 @@
 import { mulberry } from '../utils/rng';
+import { CAMERA } from './config';
 import type { Decoration, DecorationType, TrackData, TrackPoint, Vec } from './types';
 
 export const MAP_SIZE = 2048;
@@ -6,9 +7,9 @@ export const WORLD = {
   W: 320,
   H: 180,
   HORIZON: 62,
-  CAM_H: 19,
+  CAM_H: CAMERA.HEIGHT,
   FOCAL: 160,
-  CAM_DIST: 34,
+  CAM_DIST: CAMERA.DIST,
   ROAD_HALF: 26,
   CURB_HALF: 34,
   LAPS: 3,

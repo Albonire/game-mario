@@ -1,4 +1,5 @@
 import { getSprite, kartSprite, propSprite } from './art';
+import { KART, PICKUP, PICKUP_WIDTH, PROP_WIDTH } from './config';
 import { BOX_WEIGHTS, DIFFICULTY_BY_ID, PILOTS, PILOT_BY_ID } from './data';
 import { GameAudio } from './audio';
 import { createGameMap, type GameMap } from './map';
@@ -525,7 +526,7 @@ export class RaceEngine {
 
     // Zonas de impulso pintadas en el asfalto.
     for (const pad of this.track.boostPads) {
-      if (k.boostPadCooldown <= 0 && Math.hypot(k.x - pad.x, k.y - pad.y) < 22) {
+      if (k.boostPadCooldown <= 0 && Math.hypot(k.x - pad.x, k.y - pad.y) < PICKUP.BOOST_PAD) {
         k.boost = Math.max(k.boost, 1.1);
         k.boostPadCooldown = 1.6;
         if (k.isPlayer) {
@@ -748,8 +749,8 @@ export class RaceEngine {
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const dist = Math.hypot(dx, dy);
-        if (dist > 0.0001 && dist < 10) {
-          const overlap = (10 - dist) / 2;
+        if (dist > 0.0001 && dist < KART.COLLIDE) {
+          const overlap = (KART.COLLIDE - dist) / 2;
           const nx = dx / dist;
           const ny = dy / dist;
           a.x -= nx * overlap;
@@ -785,7 +786,7 @@ export class RaceEngine {
         if (box.respawn <= 0) box.active = true;
         continue;
       }
-      if (Math.hypot(this.player.x - box.x, this.player.y - box.y) < 11) {
+      if (Math.hypot(this.player.x - box.x, this.player.y - box.y) < PICKUP.BOX_PLAYER) {
         box.active = false;
         box.respawn = 4.2;
         this.giveItem(this.player);
@@ -797,7 +798,7 @@ export class RaceEngine {
       }
       for (const k of this.karts) {
         if (k.isPlayer || k.item) continue;
-        if (Math.hypot(k.x - box.x, k.y - box.y) < 8) {
+        if (Math.hypot(k.x - box.x, k.y - box.y) < PICKUP.BOX_AI) {
           box.active = false;
           box.respawn = 4.2;
           this.giveItem(k);
@@ -812,7 +813,7 @@ export class RaceEngine {
         if (can.respawn <= 0) can.active = true;
         continue;
       }
-      if (Math.hypot(this.player.x - can.x, this.player.y - can.y) < 9.5) {
+      if (Math.hypot(this.player.x - can.x, this.player.y - can.y) < PICKUP.CAN_PLAYER) {
         can.active = false;
         can.respawn = 12;
         this.player.nitro = Math.min(100, this.player.nitro + 20 * this.player.pilot.spec.nitroGain);
@@ -822,7 +823,7 @@ export class RaceEngine {
       }
       for (const k of this.karts) {
         if (k.isPlayer) continue;
-        if (Math.hypot(k.x - can.x, k.y - can.y) < 8) {
+        if (Math.hypot(k.x - can.x, k.y - can.y) < PICKUP.CAN_AI) {
           can.active = false;
           can.respawn = 12;
           k.boost = Math.max(k.boost, 0.45);
@@ -838,7 +839,7 @@ export class RaceEngine {
       for (const k of this.karts) {
         if (k.immune > 0 || k.spin > 0) continue;
         if (banana.owner === k.pilot.id && this.raceTime - banana.armedAt < 1.4) continue;
-        if (Math.hypot(k.x - banana.x, k.y - banana.y) < 7) {
+        if (Math.hypot(k.x - banana.x, k.y - banana.y) < PICKUP.BANANA) {
           this.spinKart(k);
           hit = true;
           break;
@@ -883,8 +884,8 @@ export class RaceEngine {
 
   private dropBanana(k: Kart) {
     this.bananas.push({
-      x: k.x - Math.sin(k.angle) * 13,
-      y: k.y + Math.cos(k.angle) * 13,
+      x: k.x - Math.sin(k.angle) * 10,
+      y: k.y + Math.cos(k.angle) * 10,
       owner: k.pilot.id,
       armedAt: this.raceTime + 0.25,
       life: 40,
@@ -893,8 +894,8 @@ export class RaceEngine {
 
   private fireBowling(k: Kart) {
     this.projectiles.push({
-      x: k.x + Math.sin(k.angle) * 12,
-      y: k.y - Math.cos(k.angle) * 12,
+      x: k.x + Math.sin(k.angle) * 9,
+      y: k.y - Math.cos(k.angle) * 9,
       angle: k.angle,
       speed: 250,
       owner: k.pilot.id,
@@ -912,7 +913,7 @@ export class RaceEngine {
       let remove = proj.life <= 0 || !islandInfo(proj.x, proj.y).inside;
       for (const k of this.karts) {
         if (k.pilot.id === proj.owner || k.immune > 0) continue;
-        if (Math.hypot(k.x - proj.x, k.y - proj.y) < 8) {
+        if (Math.hypot(k.x - proj.x, k.y - proj.y) < PICKUP.BOWL) {
           this.spinKart(k);
           remove = true;
           break;
@@ -1172,27 +1173,23 @@ export class RaceEngine {
     };
     this.renderer.render(ctx, camera, dt);
 
-    type Call = { dist: number; draw: () => void };
+    // Todo lo que se ve en el mundo (props, recogibles, karts y partículas) entra en una sola
+    // lista y se pinta de lejos a cerca según la profundidad en el eje de la cámara.
+    type Call = { depth: number; draw: () => void };
     const calls: Call[] = [];
     const visibilityCut = 760;
+    const sinYaw = Math.sin(camera.yaw);
+    const cosYaw = Math.cos(camera.yaw);
     const dist2 = (x: number, y: number) => (x - camera.x) ** 2 + (y - camera.y) ** 2;
+    const depthOf = (x: number, y: number) => (x - camera.x) * sinYaw - (y - camera.y) * cosYaw;
 
     for (const d of this.track.decorations) {
       if (dist2(d.x, d.y) > visibilityCut * visibilityCut) continue;
-      const widthByType: Record<string, number> = {
-        palm: 18,
-        rock: 13,
-        bush: 11,
-        sign: 7.5,
-        arch: 76,
-        lighthouse: 32,
-        bouy: 4.2,
-      };
       const sprite = getSprite(d.type);
       calls.push({
-        dist: dist2(d.x, d.y),
+        depth: depthOf(d.x, d.y),
         draw: () => {
-          drawWorldSprite(ctx, sprite, camera, d.x, d.y, widthByType[d.type] * d.scale);
+          drawWorldSprite(ctx, sprite, camera, d.x, d.y, (PROP_WIDTH[d.type] ?? 12) * d.scale);
         },
       });
     }
@@ -1201,9 +1198,9 @@ export class RaceEngine {
       if (!box.active || dist2(box.x, box.y) > 500 * 500) continue;
       const bob = Math.sin(this.raceTime * 2.2 + box.phase) * 1.2;
       calls.push({
-        dist: dist2(box.x, box.y),
+        depth: depthOf(box.x, box.y),
         draw: () => {
-          drawWorldSprite(ctx, propSprite('box'), camera, box.x, box.y, 7.5, { lift: 3 + bob });
+          drawWorldSprite(ctx, propSprite('box'), camera, box.x, box.y, PICKUP_WIDTH.box, { lift: 3 + bob });
         },
       });
     }
@@ -1211,39 +1208,40 @@ export class RaceEngine {
       if (!can.active || dist2(can.x, can.y) > 420 * 420) continue;
       const bob = Math.sin(this.raceTime * 2.8 + can.phase) * 0.7;
       calls.push({
-        dist: dist2(can.x, can.y),
-        draw: () => drawWorldSprite(ctx, propSprite('can'), camera, can.x, can.y, 3.2, { lift: 1.5 + bob }),
+        depth: depthOf(can.x, can.y),
+        draw: () => drawWorldSprite(ctx, propSprite('can'), camera, can.x, can.y, PICKUP_WIDTH.can, { lift: 1.5 + bob }),
       });
     }
     for (const banana of this.bananas) {
       if (dist2(banana.x, banana.y) > 350 * 350) continue;
       calls.push({
-        dist: dist2(banana.x, banana.y),
-        draw: () => drawWorldSprite(ctx, propSprite('banana'), camera, banana.x, banana.y, 4.4),
+        depth: depthOf(banana.x, banana.y),
+        draw: () => drawWorldSprite(ctx, propSprite('banana'), camera, banana.x, banana.y, PICKUP_WIDTH.banana),
       });
     }
     for (const proj of this.projectiles) {
       if (dist2(proj.x, proj.y) > 380 * 380) continue;
       calls.push({
-        dist: dist2(proj.x, proj.y),
-        draw: () => drawWorldSprite(ctx, propSprite('bowl'), camera, proj.x, proj.y, 4.2, { lift: 1 }),
+        depth: depthOf(proj.x, proj.y),
+        draw: () => drawWorldSprite(ctx, propSprite('bowl'), camera, proj.x, proj.y, PICKUP_WIDTH.bowl, { lift: 1 }),
       });
     }
     for (const k of this.karts) {
-      if (k.isPlayer) continue;
-      const d = dist2(k.x, k.y);
-      if (d > 500 * 500) continue;
+      if (!k.isPlayer && dist2(k.x, k.y) > 500 * 500) continue;
       calls.push({
-        dist: d,
-        draw: () => this.drawKart(ctx, k, camera),
+        depth: depthOf(k.x, k.y),
+        draw: () => (k.isPlayer ? this.drawPlayer(ctx, camera) : this.drawKart(ctx, k, camera)),
+      });
+    }
+    for (const particle of this.particles) {
+      calls.push({
+        depth: depthOf(particle.x, particle.y),
+        draw: () => this.drawParticle(ctx, camera, particle),
       });
     }
 
-    calls.sort((a, b) => b.dist - a.dist);
+    calls.sort((a, b) => b.depth - a.depth);
     for (const call of calls) call.draw();
-
-    this.drawParticles(ctx, camera);
-    this.drawPlayer(ctx, camera);
 
     ctx.drawImage(this.overlay, 0, 0);
     if (this.player.boost > 0 || this.player.nitro > 0) {
@@ -1271,11 +1269,19 @@ export class RaceEngine {
     }
   }
 
+  /**
+   * Ancho con el que se dibuja el sprite heredado (64 px de lienzo, la carrocería ocupa ~91 %).
+   * Se ajusta para que el kart visible mida KART.WIDTH unidades.
+   */
+  private spriteWidth() {
+    return KART.WIDTH / 0.906;
+  }
+
   private drawKart(ctx: CanvasRenderingContext2D, k: Kart, camera: { x: number; y: number; yaw: number; shake: number }) {
     const p = project(camera, k.x, k.y);
     if (!p.visible) return;
     const sprite = kartSprite(k.pilot);
-    const w = 9.6 * p.scale;
+    const w = this.spriteWidth() * p.scale;
     const h = w * (sprite.height / sprite.width);
     if (w < 1) return;
     ctx.save();
@@ -1292,12 +1298,14 @@ export class RaceEngine {
   private drawPlayer(ctx: CanvasRenderingContext2D, camera: { x: number; y: number; yaw: number; shake: number }) {
     const k = this.player;
     const p = project(camera, k.x, k.y);
+    if (!p.visible) return;
     const sprite = kartSprite(k.pilot);
-    const w = 10.2 * p.scale;
+    const w = this.spriteWidth() * p.scale;
     const h = w * (sprite.height / sprite.width);
     const baseY = p.y + 1;
     const bounce = Math.sin(this.raceTime * 21) * Math.min(0.8, k.speed / 200);
     const lean = k.spin > 0 ? 0 : (k.driftHeld ? 0.2 : 0.1) * this.currentSteer;
+    const flameScale = w / 40;
     ctx.save();
     ctx.fillStyle = 'rgba(8, 20, 19, .36)';
     ctx.beginPath();
@@ -1306,18 +1314,18 @@ export class RaceEngine {
 
     if (k.boost > 0 || k.nitro > 0.2) {
       const flame = k.boost > 0 ? '#ffb23e' : '#6ee7ff';
-      const length = 7 + Math.sin(this.raceTime * 40) * 3 + (k.boost > 0 ? 8 : 0);
+      const length = (7 + Math.sin(this.raceTime * 40) * 3 + (k.boost > 0 ? 8 : 0)) * flameScale;
       for (const side of [-1, 1]) {
         ctx.fillStyle = flame;
         ctx.beginPath();
-        ctx.moveTo(p.x + side * 6, baseY - 2);
-        ctx.lineTo(p.x + side * 4, baseY + length);
-        ctx.lineTo(p.x + side * 9, baseY - 1);
+        ctx.moveTo(p.x + side * 6 * flameScale, baseY - 2 * flameScale);
+        ctx.lineTo(p.x + side * 4 * flameScale, baseY + length);
+        ctx.lineTo(p.x + side * 9 * flameScale, baseY - 1 * flameScale);
         ctx.closePath();
         ctx.fill();
         ctx.fillStyle = 'rgba(255, 252, 205, .8)';
         ctx.beginPath();
-        ctx.arc(p.x + side * 6, baseY + 1, 1.6, 0, Math.PI * 2);
+        ctx.arc(p.x + side * 6 * flameScale, baseY + 1 * flameScale, 1.6 * flameScale, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -1329,17 +1337,19 @@ export class RaceEngine {
     ctx.restore();
   }
 
-  private drawParticles(ctx: CanvasRenderingContext2D, camera: { x: number; y: number; yaw: number; shake: number }) {
-    for (const particle of this.particles) {
-      const p = project(camera, particle.x, particle.y);
-      if (!p.visible) continue;
-      const alpha = clamp(particle.life / particle.maxLife, 0, 1);
-      const size = Math.max(0.7, particle.size * p.scale * 0.55);
-      const y = p.y - particle.z * p.scale;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = particle.color;
-      ctx.fillRect(p.x - size / 2, y - size, size, size);
-    }
+  private drawParticle(
+    ctx: CanvasRenderingContext2D,
+    camera: { x: number; y: number; yaw: number; shake: number },
+    particle: Particle,
+  ) {
+    const p = project(camera, particle.x, particle.y);
+    if (!p.visible) return;
+    const alpha = clamp(particle.life / particle.maxLife, 0, 1);
+    const size = Math.max(0.7, particle.size * p.scale * 0.34);
+    const y = p.y - particle.z * p.scale;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = particle.color;
+    ctx.fillRect(p.x - size / 2, y - size, size, size);
     ctx.globalAlpha = 1;
   }
 
