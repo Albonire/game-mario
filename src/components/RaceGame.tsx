@@ -578,11 +578,11 @@ function RaceView({
                   </div>
                   <div className="result-stat">
                     <p>Mejor vuelta</p>
-                    <strong>{result.bestLap ? formatTime(result.bestLap) : '—'}</strong>
+                    <strong>{result.bestLap ? formatTime(result.bestLap) : '--:--.--'}</strong>
                   </div>
                   <div className="result-stat">
                     <p>Última vuelta</p>
-                    <strong>{result.lastLap ? formatTime(result.lastLap) : '—'}</strong>
+                    <strong>{result.lastLap ? formatTime(result.lastLap) : '--:--.--'}</strong>
                   </div>
                 </div>
 
@@ -630,7 +630,7 @@ function RaceView({
                       </div>
                       <div className="text-right">
                         <p className="font-mono text-[11px] tabular-nums">{formatTime(row.time)}</p>
-                        <p className="font-mono text-[8px] text-white/30">VT {row.bestLap ? formatTime(row.bestLap) : '—'}</p>
+                        <p className="font-mono text-[8px] text-white/30">VT {row.bestLap ? formatTime(row.bestLap) : '--:--.--'}</p>
                       </div>
                     </div>
                   ))}

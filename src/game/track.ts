@@ -1,3 +1,4 @@
+import { mulberry } from '../utils/rng';
 import type { Decoration, DecorationType, TrackData, TrackPoint, Vec } from './types';
 
 export const MAP_SIZE = 2048;
@@ -127,17 +128,6 @@ export function islandInfo(x: number, y: number) {
   const radius = Math.hypot(dx, dy);
   const edge = islandBoundary(angle);
   return { angle, radius, edge, margin: edge - radius, inside: radius < edge };
-}
-
-function mulberry(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 export function nearestPoint(points: TrackPoint[], x: number, y: number) {
